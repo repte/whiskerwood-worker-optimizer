@@ -1,0 +1,38 @@
+param([string]$EngineRoot = 'D:\WWEngine')
+
+$ErrorActionPreference = 'Stop'
+$projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$editor = Join-Path $EngineRoot 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
+if (-not (Test-Path -LiteralPath $editor -PathType Leaf)) {
+    throw "Custom editor not found: $editor"
+}
+$log = Join-Path $projectRoot 'Saved\Logs\WorkerOptimizer-AllTests.log'
+$consoleLog = Join-Path $projectRoot 'Saved\Logs\WorkerOptimizer-AllTests-console.log'
+$arguments = @(
+    (Join-Path $projectRoot 'Whiskerwood.uproject'),
+    ('-ExecutePythonScript=' + (Join-Path $PSScriptRoot 'test_all.py')),
+    '-unattended', '-nullrhi', '-nosound', '-culture=en',
+    ('-abslog=' + $log), '-stdout', '-FullStdOutLogOutput'
+)
+& $editor @arguments *> $consoleLog
+if ($LASTEXITCODE -ne 0) { throw "Editor exited with $LASTEXITCODE; see $log" }
+$text = Get-Content -LiteralPath $log -Raw
+if ($text -match 'LogPython: Error:|LogEditorPythonExecuter: Error:|LogBlueprint: Error:|LogScript: (Error|Warning):') {
+    throw "Editor reported a test/runtime error; see $log"
+}
+foreach ($marker in @('WO_SOLVER_TESTS_PASS', 'WO_PLANNER_TESTS_PASS', 'WO_WORKPLACE_TESTS_PASS', 'WO_SNAPSHOT_TESTS_PASS', 'WO_NATIVE_BRIDGE_AUTHORING_PASS', 'WO_ACTION_BRIDGE_TESTS_PASS', 'WO_JOB_SCORER_TESTS_PASS', 'WO_JOB_ELIGIBILITY_TESTS_PASS', 'WO_TEACHER_PROFILES_TESTS_PASS', 'WO_ACTION_CONFIRMATION_TESTS_PASS', 'WO_APPLICATION_RUNNER_TESTS_PASS', 'WO_ACTION_PLAN_TESTS_PASS', 'WO_PRIORITY_SETTINGS_TESTS_PASS', 'WO_DEFINITION_CATALOG_TESTS_PASS', 'WO_SCORE_MATRIX_TESTS_PASS', 'WO_GROUPED_MATRIX_TESTS_PASS', 'WO_PLAN_SEARCH_TESTS_PASS', 'WO_GROUPED_SEARCH_TESTS_PASS', 'WO_CONTROLLER_TESTS_PASS', 'WO_STARTUP_TESTS_PASS', 'WO_LIFECYCLE_TESTS_PASS', 'WO_HOTKEY_TESTS_PASS', 'WO_WIDGET_TESTS_PASS', 'WO_UI_LIFECYCLE_TESTS_PASS', 'WO_ALL_TESTS_PASS')) {
+    $pass = Select-String -LiteralPath $log -Pattern $marker
+    if (-not $pass) { throw "Missing $marker; see $log" }
+    $pass.Line
+}
+$packageSetup = Select-String -LiteralPath $log -Pattern 'WO_PACKAGE_SETUP_TESTS_PASS'
+if (-not $packageSetup) { throw "Missing WO_PACKAGE_SETUP_TESTS_PASS; see $log" }
+$packageSetup.Line
+$compatibility = Select-String -LiteralPath $log -Pattern 'WO_COMPATIBILITY_TESTS_PASS'
+if (-not $compatibility) { throw "Missing WO_COMPATIBILITY_TESTS_PASS; see $log" }
+$compatibility.Line
+foreach ($marker in @('WO_RESERVE_TESTS_PASS', 'WO_BUILDER_SCORE_TESTS_PASS', 'WO_LOCALIZATION_TESTS_PASS')) {
+    $pass = Select-String -LiteralPath $log -Pattern $marker
+    if (-not $pass) { throw "Missing $marker; see $log" }
+    $pass.Line
+}

@@ -1,0 +1,22 @@
+# Local Unreal build products and authoring caches
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+.vs/
+*.sln
+*.suo
+*.VC.db
+__pycache__/
+*.py[cod]
+
+# Machine-specific settings and private data
+GameInstallDirectory.txt
+.env
+.env.*
+*.log
+*.whisker
+*.sav
+
+# Release assembly is uploaded separately from source
+.release-artifacts/

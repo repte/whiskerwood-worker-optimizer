@@ -1,0 +1,16 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "Worker Optimizer Authoring",
+  "Description": "Editor-only access to validated native game action references. Never distribute with the mod.",
+  "Category": "Modding",
+  "EnabledByDefault": true,
+  "CanContainContent": false,
+  "Modules": [
+    { "Name": "WorkerOptimizerEditor", "Type": "Editor", "LoadingPhase": "PostEngineInit" }
+  ],
+  "Plugins": [
+    { "Name": "Suzie", "Enabled": true }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "Name": "WorkerOptimizer",
+  "Description": "On-demand worker assignment with guild matching, minimum crews, configurable priorities and a free-builder reserve. Development build tested in a small settlement.",
+  "Version": "0.1.0-dev",
+  "CreatedBy": "WorkerOptimizer contributors",
+  "EngineVersion": "5.8"
+}
