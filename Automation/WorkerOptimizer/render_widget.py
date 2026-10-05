@@ -17,7 +17,8 @@ try:
     assert bridge.call_method("InitializeBridge", args=(view,))
     assert controller.call_method("Initialize", args=(controller, bridge))
     assert widget.call_method("InitializeUI", args=(controller, config))
-    for width, height in ((1920, 1080), (1280, 720), (800, 600)):
+    for width, height in ((3440, 1440), (1920, 1080), (1280, 720), (800, 600), (400, 300)):
+        assert widget.call_method("ApplyLayout", args=(float(width), float(height)))
         assert unreal.WorkerOptimizerTestSupport.render_widget_artifact(widget, width, height, f"idle-{width}.png")
         assert widget.call_method("ToggleSettings")
         assert unreal.WorkerOptimizerTestSupport.render_widget_artifact(widget, width, height, f"settings-{width}.png")
@@ -30,7 +31,7 @@ try:
     assert not config.call_method("SaveSettings", args=("invalid-slot",))
     assert widget.call_method("RefreshUI")
     assert unreal.WorkerOptimizerTestSupport.render_widget_artifact(widget, 1280, 720, "hotkey-unsaved-1280.png")
-    unreal.log("WO_WIDGET_RENDER_PASS: native Slate tree rendered at 1920x1080, 1280x720 and 800x600")
+    unreal.log("WO_WIDGET_RENDER_PASS: native Slate tree rendered at 3440x1440, 1920x1080, 1280x720, 800x600 and 400x300 logical units")
 finally:
     widget.call_method("ShutdownUI")
     widget.remove_from_parent()

@@ -23,13 +23,15 @@ Worker Optimizer matches residents to jobs using guild specialties, productivity
 
 ## Status
 
-Development build tested on **Whiskerwood 0.7.209.0 for Windows**. Not yet published on Steam Workshop.
+Available on [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514). Built for **Whiskerwood 0.7.209.0 for Windows**.
 
-The current build has passed 29 automated test suites and a live test in a small settlement. Larger settlements, complex school arrangements and interactions with other mods need further testing. Use a separate test save before trying it in an established settlement.
+Version **0.1.1-dev** passes 30 automated suites and 10 native widget pixel checks. Core assignment was live-tested in version 0.1.0-dev; the new startup/layout repair has not yet been tested in-game. Larger settlements, complex school arrangements and interactions with other mods need further testing. Use a separate test save before trying it in an established settlement.
 
 ## Installation
 
-Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
+For Workshop installation, subscribe, wait for Steam to download and restart the game. Remove any separate local WorkerOptimizer installation first.
+
+For manual installation, close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
 
 ```text
 %LOCALAPPDATA%\Whiskerwood\Saved\mods\WorkerOptimizer\
@@ -79,6 +81,10 @@ Among otherwise equal production outcomes, the reserve selection favors resident
 
 Planning advances incrementally across ticks. A map-load session owns the controller, action bridge and widget, prevents duplicate controls and cleans up its references when the world ends. Loading a save never starts an optimization automatically.
 
+Startup listens for the native load-completion event and also checks `ProjectArcoGameModeBase.CurrentInitPhase`. Once the phase is `DONE` and a player controller exists, a missing event no longer prevents session creation. The fallback is checked at half-second intervals and stops once the session is ready; it never triggers optimization.
+
+The controls use viewport dimensions divided by Unreal's current DPI scale. Below 1600 logical units of width they move upward to clear the bottom toolbar. The hotkey panel is constrained to the available width. Placement refreshes after resolution or DPI changes without resizing either icon. Other mods' overlays are not automatically detected.
+
 ### Update Compatibility
 
 Building types, guild specialties, slot layouts and category identifiers come from game data. Priorities use stable internal identifiers rather than translated building names. New building types using supported workplace components can therefore participate without adding their names to the mod.
@@ -126,7 +132,7 @@ Only the `.pak` and `.uplugin` files in that folder are installation inputs. The
 
 ## Verification and Known Limits
 
-The 29 automated suites cover assignment planning, priorities, minimum crews, protected workers, reserve selection, localization, settings migration, hotkeys, lifecycle and action confirmation. Reserve tests include 72 exhaustive-oracle cases. Editor tests cannot prove native game behavior because the modkit contains native-function stubs.
+The 30 automated suites cover assignment planning, priorities, minimum crews, protected workers, reserve selection, localization, settings migration, hotkeys, lifecycle and action confirmation. Reserve tests include 72 exhaustive-oracle cases. Startup/layout regressions cover missed events and 30 viewport/DPI combinations; native render checks cover five logical sizes from 400x300 to 3440x1440 in idle and settings states. Editor tests cannot prove native game behavior because the modkit contains native-function stubs.
 
 Live testing on 5 October 2026 confirmed:
 

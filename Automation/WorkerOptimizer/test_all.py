@@ -11,4 +11,5 @@ runpy.run_path(str(Path(__file__).with_name("test_compatibility.py")), run_name=
 for name in ("test_reserve.py", "test_builder_score.py", "test_localization.py"):
     runpy.run_path(str(Path(__file__).with_name(name)), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("test_package_setup.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("test_startup_layout.py")), run_name="__main__")
 unreal.log("WO_ALL_TESTS_PASS")

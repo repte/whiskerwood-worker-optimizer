@@ -31,7 +31,7 @@ $packageSetup.Line
 $compatibility = Select-String -LiteralPath $log -Pattern 'WO_COMPATIBILITY_TESTS_PASS'
 if (-not $compatibility) { throw "Missing WO_COMPATIBILITY_TESTS_PASS; see $log" }
 $compatibility.Line
-foreach ($marker in @('WO_RESERVE_TESTS_PASS', 'WO_BUILDER_SCORE_TESTS_PASS', 'WO_LOCALIZATION_TESTS_PASS')) {
+foreach ($marker in @('WO_RESERVE_TESTS_PASS', 'WO_BUILDER_SCORE_TESTS_PASS', 'WO_LOCALIZATION_TESTS_PASS', 'WO_STARTUP_LAYOUT_TESTS_PASS')) {
     $pass = Select-String -LiteralPath $log -Pattern $marker
     if (-not $pass) { throw "Missing $marker; see $log" }
     $pass.Line

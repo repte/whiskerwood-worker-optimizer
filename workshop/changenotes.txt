@@ -1,0 +1,7 @@
+0.1.1-dev - Startup and adaptive UI repair
+- Added a startup fallback for new colonies or missed load-completion events.
+- Controls adapt to viewport size and DPI; compact layouts move above the bottom toolbar.
+- Hotkey panel stays within the viewport and supports wrapping labels.
+- Assignment rules, builder reserve and hotkey behavior are unchanged.
+- Includes regression and native widget-render tests. In-game validation of this update is pending.
+Documentation and source: https://github.com/repte/whiskerwood-worker-optimizer

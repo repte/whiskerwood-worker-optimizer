@@ -18,7 +18,7 @@ existing = set(BP.list_variables(bp))
 for name, cls in [(name, load(asset)) for name, asset in refs.items()] + [("API", api_class)]:
     if name not in existing:
         BP.add_object_variable(bp, name, cls)
-for kind, names in {"bool": "Primary Bound Loaded Ready ShuttingDown", "name": "FailureCode"}.items():
+for kind, names in {"bool": "Primary Bound Loaded Ready ShuttingDown", "name": "FailureCode", "float": "NextStartupCheck"}.items():
     for name in names.split():
         if name not in existing:
             BP.add_variable(bp, name, kind)
@@ -30,6 +30,8 @@ definitions = {
     "ReleaseSession": [], "Shutdown": [],
     "CreateUI": [], "InstallUI": [("InputWidget", load("WBP_WorkerOptimizer")), ("InputConfig", load("BP_HotkeyConfig"))],
     "PumpUI": [],
+    "ObserveReadiness": [("WorldReady", "bool"), ("PlayerReady", "bool")],
+    "PumpLifecycle": [],
 }
 void_functions = {"BindLoading", "UnbindLoading", "OnLoaded"}
 graphs = {}
@@ -126,6 +128,29 @@ code["OnLoaded"] = f"""(fn OnLoaded ()
     (if {g('Loaded')} (return))
     {put('Loaded', 'true')}
     (CallFunction|CreateSession))"""
+code["ObserveReadiness"] = f"""(fn ObserveReadiness (WorldReady PlayerReady)
+    (if (or {g('ShuttingDown')} (or (not {g('Bound')}) (not {g('Primary')}))) (return false))
+    (if (or (not WorldReady) (not PlayerReady)) (return false))
+    (if (not {g('Loaded')}) {trace('world_ready')} {put('Loaded', 'true')})
+    (return true))"""
+# New colonies and late-bound mods do not necessarily receive the save-load event.
+# Use the game's explicit init phase; never infer readiness from elapsed time.
+code["PumpLifecycle"] = f"""(fn PumpLifecycle ()
+    (if {g('ShuttingDown')} (return false))
+    (if {g('Ready')} (bind pumped (CallFunction|PumpUI)) (return pumped))
+    (bind now (Utilities|Time|GetRealTimeSeconds))
+    (if (< now {g('NextStartupCheck')}) (return false))
+    {put('NextStartupCheck', '(+ now 0.5)')}
+    (if (not {g('Bound')}) (CallFunction|BeginLifecycle))
+    (if (or (not {g('Bound')}) (not {g('Primary')})) (return false))
+    (bind mode (Utilities|Casting|CastToProjectArcoGameModeBase :Object (Game|GetGameMode))
+      (:then
+        (bind phase (Class|ProjectArcoGameModeBase|CurrentInitPhase :self mode))
+        (bind observed (CallFunction|ObserveReadiness :WorldReady (Utilities|Enum|Equal(Enum) :A phase)
+            :PlayerReady {present('(Game|GetPlayerController :PlayerIndex 0)')}))
+        (if observed (bind installed (CallFunction|CreateSession)) (return installed))
+        (return false))
+      (:CastFailed (return false))))"""
 code["InstallSession"] = f"""(fn InstallSession (InputController InputBridge InputView)
     (if (or {g('ShuttingDown')} (or (not {g('Loaded')}) (not {g('Primary')}))) (return false))
     (if {g('Ready')} (return (and (== InputController {g('Controller')}) (and (== InputBridge {g('Bridge')}) (== InputView {g('ActionView')})))))
@@ -216,6 +241,13 @@ with toolset_registry.tool_raising_exceptions():
             continue
         unreal.log("WO_LIFECYCLE_WRITE " + name)
         BP.write_graph_dsl(graphs[name], source)
+        if name == "PumpLifecycle":
+            # The DSL caches wildcard pin types. Set the enum constant only after
+            # connecting the typed phase input, rather than wiring a string literal.
+            comparisons = [n for n in BP.get_node_infos(BP.find_nodes(graphs[name]))
+                           if n.type_id == "Utilities|Enum|Equal(Enum)"]
+            assert len(comparisons) == 1
+            BP.set_pin_value(next(p.pin_id for p in comparisons[0].input_pins if p.name == "B"), "DONE")
     # Both delegates reference the same void function; never unbind all listeners.
     for function, node_type in (("BindLoading", "EventDispatchers|BindEventtoOnLoadingFinished"),
                                 ("UnbindLoading", "EventDispatchers|UnbindEventfromOnLoadingFinished")):
@@ -237,7 +269,7 @@ with toolset_registry.tool_raising_exceptions():
         BP.set_create_event_function(create, "OnLoaded")
     BP.write_graph_dsl(BP.get_graph(bp, "EventGraph"), """
       (event EventBeginPlay () (CallFunction|BeginLifecycle))
-      (event EventTick (DeltaSeconds) (CallFunction|PumpUI))
+      (event EventTick (DeltaSeconds) (CallFunction|PumpLifecycle))
       (event EventEndPlay (EndPlayReason) (CallFunction|Shutdown))
     """)
     BP.compile_blueprint(bp, warnings_as_errors=True)

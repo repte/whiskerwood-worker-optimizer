@@ -90,6 +90,7 @@ panel.set_visibility(unreal.SlateVisibility.COLLAPSED)
 content, _ = add(unreal.VerticalBox, "SettingsContent", panel)
 label, _ = add(unreal.TextBlock, "HotkeyLabel", content, True)
 label.set_text("Worker Optimizer: Hotkey")
+label.set_auto_wrap_text(True)
 font = label.get_editor_property("font")
 font.set_editor_property("size", 12)
 label.set_editor_property("font", font)
@@ -116,6 +117,9 @@ for name, asset in refs.items():
 for name in ("Initialized", "Closed", "ButtonVisible", "SettingsOpen", "UpdatingKey"):
     if name not in existing:
         BP.add_variable(bp, name, "bool")
+for name in ("LayoutWidth", "LayoutHeight", "LayoutX", "LayoutBottom", "LayoutPanelWidth"):
+    if name not in existing:
+        BP.add_variable(bp, name, "float")
 chord = unreal.load_object(None, "/Script/Slate.InputChord")
 definitions = {
     "HasObject": [("Object", unreal.Object.static_class())],
@@ -123,6 +127,7 @@ definitions = {
     "ToggleButton": [], "ToggleSettings": [], "ClickAction": [], "RefreshUI": [], "RefreshSettingsStatus": [],
     "SyncKey": [], "KeyChanged": [("Chord", chord)], "IsCapturing": [], "ShutdownUI": [],
     "UIString": [("Key", "string")],
+    "ApplyLayout": [("Width", "float"), ("Height", "float")], "RefreshLayout": [],
 }
 graphs = {}
 existing_graphs = {str(g.get_name()) for g in BP.list_graphs(bp)}
@@ -198,6 +203,33 @@ def tint(red, green, blue, widget="ActionButton"):
 
 guard = f"(if (or {g('Closed')} (not {g('Initialized')})) (return false))"
 code = {}
+code["ApplyLayout"] = f"""(fn ApplyLayout (Width Height)
+    (if (or (< Width 280.0) (< Height 180.0)) (return false))
+    (if (and (== Width {g('LayoutWidth')}) (== Height {g('LayoutHeight')})) (return true))
+    {put('LayoutWidth', 'Width')} {put('LayoutHeight', 'Height')}
+    {put('LayoutX', '180.0')}
+    (if (> {g('LayoutX')} (- Width 100.0)) {put('LayoutX', '(- Width 100.0)')})
+    {put('LayoutBottom', '170.0')}
+    (if (< Width 1600.0) {put('LayoutBottom', '240.0')})
+    (if (> {g('LayoutBottom')} (- Height 12.0)) {put('LayoutBottom', '(- Height 12.0)')})
+    {put('LayoutPanelWidth', '372.0')}
+    (if (> {g('LayoutPanelWidth')} (- (- Width {g('LayoutX')}) 12.0))
+        {put('LayoutPanelWidth', f'(- (- Width {g("LayoutX")}) 12.0)')})
+    (Layout|CanvasSlot|SetPosition :self (Slot|SlotasCanvasSlot :Widget {g('Controls')})
+        :InPosition (Math|Vector2D|MakeVector2D :X {g('LayoutX')} :Y (- 0.0 {g('LayoutBottom')})))
+    (Layout|CanvasSlot|SetSize :self (Slot|SlotasCanvasSlot :Widget {g('Controls')})
+        :InSize (Math|Vector2D|MakeVector2D :X {g('LayoutPanelWidth')} :Y 144.0))
+    (if (> {g('LayoutPanelWidth')} 360.0) {put('LayoutPanelWidth', '360.0')})
+    (Layout|CanvasSlot|SetSize :self (Slot|SlotasCanvasSlot :Widget {g('SettingsPanel')})
+        :InSize (Math|Vector2D|MakeVector2D :X {g('LayoutPanelWidth')} :Y 86.0))
+    (return true))"""
+code["RefreshLayout"] = """(fn RefreshLayout ()
+    (bind size (Viewport|GetViewportSize))
+    (bind scale (Viewport|GetViewportScale))
+    (if (<= scale 0.0) (return false))
+    (bind (x y) (Math|Vector2D|BreakVector2D :InVec size))
+    (bind applied (CallFunction|ApplyLayout :Width (/ x scale) :Height (/ y scale)))
+    (return applied))"""
 code["UIString"] = f"""(fn UIString (Key)
     (if (not {present(g('Texts'))}) (return Key))
     (bind translated {invoke('Texts', 'Text', ':Key Key')}) (return translated))"""
@@ -260,6 +292,7 @@ code["RefreshSettingsStatus"] = f"""(fn RefreshSettingsStatus () {guard}
     (return true))"""
 code["RefreshUI"] = f"""(fn RefreshUI () {guard}
     (if (not {present(g('Controller'))}) (return false))
+    (CallFunction|RefreshLayout)
     (CallFunction|RefreshSettingsStatus)
     (Widget|SetIsEnabled :self {g('ActionButton')} :bInIsEnabled {prop('Initialized')})
     {tint(0.75, 0.83, 0.8)}
