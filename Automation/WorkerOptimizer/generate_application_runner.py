@@ -54,6 +54,19 @@ graphs = {}
 existing_graphs = {str(g.get_name()) for g in BP.list_graphs(bp)}
 for name, params in definitions.items():
     graphs[name] = BP.get_graph(bp, name) if name in existing_graphs else BP.add_function_graph(bp, name)
+    if name in existing_graphs:
+        result_kept = False
+        for node in BP.find_nodes(graphs[name]):
+            kind = node.get_class().get_name()
+            if kind == "K2Node_FunctionEntry":
+                continue
+            if kind == "K2Node_FunctionResult" and not result_kept:
+                result_kept = True
+                for pin in BP.get_node_infos([node])[0].input_pins:
+                    for connected in pin.connected_pins:
+                        BP.break_pins(connected, pin.pin_id)
+                continue
+            BP.delete_node(node)
     if name not in existing_graphs:
         for param, kind in params:
             if isinstance(kind, str):
@@ -106,7 +119,7 @@ code["HasObject"] = """(fn HasObject (Object)
 code["IsEmptyObject"] = """(fn IsEmptyObject (Object Empty) (return (== Object Empty)))"""
 code["FailApplication"] = f"""(fn FailApplication (Reason)
     {put('Active', 'false')} {put('Done', 'true')} {put('Succeeded', 'false')}
-    {put('ValidationActive', 'false')}
+    {put('ValidationActive', 'false')} {put('Waiting', 'false')} {put('PendingReceiptReady', 'false')}
     {put('FailureCode', 'Reason')} (return false))"""
 code["ValidClock"] = f"""(fn ValidClock (Now)
     (if (not (and (>= Now 0.0) (<= Now 1000000000.0))) (return false))
@@ -242,13 +255,13 @@ code["ObserveAction"] = f"""(fn ObserveAction (ReportedWorkplace Now)
     (if (not {get('Waiting')}) (return false))
     (if (not (CallFunction|ValidClock :Now Now)) {fail('invalid_clock')})
     (if (not (CallFunction|PendingStateSafe :ReportedWorkplace ReportedWorkplace))
-      (if {get('Active')} (CallFunction|FailApplication :Reason "world_changed"))
-      (bind settled (CallFunction|SettleDriftReceipt :ReportedWorkplace ReportedWorkplace)) (return settled))
+      (bind settled (CallFunction|SettleDriftReceipt :ReportedWorkplace ReportedWorkplace))
+      (if (not settled) (CallFunction|FailApplication :Reason "world_changed")) (return settled))
     (bind confirmed (Class|BPWorkforceSnapshot|ConfirmAction :self {get('Snapshot')}
       :BuildingIndex {action('Buildings')} :SlotIndex {action('Slots')} :WorkerIndex {action('Workers')}
       :Fire {action('Fire')} :ReportedWorkplace ReportedWorkplace))
     (if confirmed
-      {put('Waiting', 'false')} {put('AppliedCount', f'(+ {get("AppliedCount")} 1)')}
+      {put('Waiting', 'false')} {put('PendingReceiptReady', 'false')} {put('AppliedCount', f'(+ {get("AppliedCount")} 1)')}
       (if {action('Fire')} {put('ConfirmedFires', f'(+ {get("ConfirmedFires")} 1)')}
         (else {put('ConfirmedHires', f'(+ {get("ConfirmedHires")} 1)')}))
       {put('ActionIndex', f'(+ {get("ActionIndex")} 1)')}
@@ -276,7 +289,12 @@ code["AdvanceApplication"] = f"""(fn AdvanceApplication (Now)
     (bind accepted (Class|BPActionBridge|QueueAction :self {get('Bridge')} :Snapshot {get('Snapshot')}
       :BuildingIndex {action('Buildings')} :SlotIndex {action('Slots')} :WorkerIndex {action('Workers')} :Fire {action('Fire')}))
     (bind recorded (CallFunction|RecordDispatch :Accepted accepted :Now Now))
-    (return recorded))"""
+    (if (not recorded) (return false))
+    ; Supported native actions update the slot and employer before returning.
+    (bind workplace (Class|PrototypeAgent|GetWorkplace :self {at(sg('Workers'), action('Workers'))}))
+    (bind observed (CallFunction|ObserveAction :ReportedWorkplace workplace :Now Now))
+    (if {get('Waiting')} (CallFunction|FailApplication :Reason "world_changed"))
+    (return observed))"""
 for source in code.values():
     blueprint_dsl.parse(source)
 with toolset_registry.tool_raising_exceptions():

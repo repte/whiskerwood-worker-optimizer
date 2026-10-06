@@ -79,13 +79,16 @@ def run():
     assert call("Localize", "reserve", "fr_CA") == call("Localize", "reserve", "fr")
     for name, value in preserved.items(): assert list(settings.get_editor_property(name)) == value
     general = BP.read_graph_dsl(BP.get_graph(bp, "RegisterGeneral"))
-    for key in ("mode", "reserve", "auto_assignment"): assert "WorkerOptimizer.ui.title." + key in general
-    assert "WorkerOptimizer.ui.title.category." in BP.read_graph_dsl(BP.get_graph(bp, "RegisterCategory"))
+    assert "RegisterStrings" in general, "The manual icon still needs registered localization"
+    for function in ("RegisterGeneral", "RegisterCategory", "RegisterType"):
+        graph = BP.read_graph_dsl(BP.get_graph(bp, function))
+        assert "RegisterModOptions" not in graph, "Dormant settings must not expose native options"
+        assert "MigrateOption" not in graph, "Dormant settings must not rewrite saved options"
     assert "ListLanguageIds" in BP.read_graph_dsl(BP.get_graph(bp, "RegisterStrings")), "Registration must use native IDs"
     for number in (0, 7, 100): assert call("ParseReserve", str(number)) == number
     for bad in ("", "-1", "2x", "2.5", "1000000"): assert call("ParseReserve", bad) == 1
     assert call("ReadReserve", None) == 1
-    unreal.log("WO_LOCALIZATION_TESTS_PASS: native17 catalog, every authored/derived cell, regional exact/prefix precedence, interpolation, Dutch migration, stable IDs and nonmutating reads")
+    unreal.log("WO_LOCALIZATION_TESTS_PASS: native17 catalog, every authored/derived cell, regional exact/prefix precedence, interpolation, Dutch migration, stable IDs, dormant options and nonmutating reads")
 
 if "--data-only" in sys.argv:
     rows = check_catalog()

@@ -20,8 +20,8 @@ for name in ("ColumnActors", "SeenOccupants"):
     if name not in existing:
         BP.add_object_variable(bp, name, worker_class, container_type=ContainerType.ARRAY)
 for kind, names in {
-    "bool": "LayoutActive LayoutDone LayoutSucceeded AnyRequired HasFixed ColumnsReady",
-    "int": "BuildingIndex SlotIndex WorkerIndex MinimumFallbackRow",
+    "bool": "LayoutActive LayoutDone LayoutSucceeded AnyRequired HasFixed ColumnsReady HasProtectedOptional",
+    "int": "BuildingIndex SlotIndex WorkerIndex MinimumFallbackRow ProtectionRow",
     "name": "FailureCode",
     "int[]": "RowBuildings RowSlots Incumbents FixedSlots ColumnWorkers BuildingStarts",
     "bool[]": "Minimum SchoolBuildings FlexibleMinimumBuildings",
@@ -107,7 +107,7 @@ code["BeginLayout"] = f"""(fn BeginLayout (InputSnapshot)
     (if {g('LayoutActive')} (return false))
     {clear} {put('LayoutDone', 'false')} {put('LayoutSucceeded', 'false')}
     {put('FailureCode', '"None"')} {put('BuildingIndex', '0')} {put('SlotIndex', '0')} {put('WorkerIndex', '0')}
-    {put('ColumnsReady', 'false')}
+    {put('ColumnsReady', 'false')} {put('HasProtectedOptional', 'false')} {put('ProtectionRow', '0')}
     (if (not {present('InputSnapshot')}) {fail('invalid_snapshot')})
     (if (not (and {sg('SnapshotValid', 'InputSnapshot')} {sg('CaptureDone', 'InputSnapshot')})) {fail('invalid_snapshot')})
     (if (or (> {count(sg('Buildings', 'InputSnapshot'))} 10000) (> {count(sg('Workers', 'InputSnapshot'))} 10000)) {fail('too_large')})
@@ -132,9 +132,12 @@ code["CaptureLayoutRow"] = f"""(fn CaptureLayoutRow ()
     (if (>= {count(g('ColumnActors'))} 10000) {fail('too_large')})
     {add('FixedSlots', count(g('ColumnActors')))}
     {add('Incumbents', '-2')} {add('ColumnWorkers', '-2')} {add('ColumnActors', 'slot_Agent')}
+    (if (not slot_bIsRequiredToRun) {put('HasProtectedOptional', 'true')})
     (if (and (not {g('HasFixed')}) (not {at(g('SchoolBuildings'), g('BuildingIndex'))}))
       {put('MinimumFallbackRow', f'(- {count(g("RowBuildings"))} 1)')})
     {put('HasFixed', 'true')} (return true))"""
+# Native required-slot fires also clear optional slots. Protect their unavailable
+# incumbents by pinning occupied required slots, at most one layout row per step.
 code["AdvanceLayout"] = f"""(fn AdvanceLayout ()
     (if (not {g('LayoutActive')}) (return false))
     (if (not {present(g('Snapshot'))}) {fail('invalid_snapshot')})
@@ -149,10 +152,16 @@ code["AdvanceLayout"] = f"""(fn AdvanceLayout ()
         (if (not unchanged) {fail('world_changed')})
         {add('BuildingStarts', count(g('RowBuildings')))}
         {put('MinimumFallbackRow', count(g('RowBuildings')))} {put('AnyRequired', 'false')} {put('HasFixed', 'false')}
+        {put('ProtectionRow', count(g('RowBuildings')))} {put('HasProtectedOptional', 'false')}
         (bind school (Actor|GetComponentbyClass :self {at(sg('Buildings'), g('BuildingIndex'))} :ComponentClass "/Script/ProjectArco.School"))
         {add('SchoolBuildings', present('school'))} {add('FlexibleMinimumBuildings', 'false')})
       {unpack('WorkerAssignment', at(sg('Workforces'), g('BuildingIndex')), 'wf')}
       (if (>= {g('SlotIndex')} {count('wf_m_workerSlots')})
+        (if (and {g('HasProtectedOptional')} (< {g('ProtectionRow')} {count(g('RowBuildings'))}))
+          (bind incumbent {at(g('Incumbents'), g('ProtectionRow'))})
+          (if (and {at(g('Minimum'), g('ProtectionRow'))} (>= incumbent 0))
+            (Utilities|Array|SetArrayElem :TargetArray {g('FixedSlots')} :Index {g('ProtectionRow')} :Item incumbent))
+          {put('ProtectionRow', f'(+ {g("ProtectionRow")} 1)')} (return true))
         (if (and (not {g('AnyRequired')}) (> {count('wf_m_workerSlots')} 0))
           (if {at(g('SchoolBuildings'), g('BuildingIndex'))}
             (Utilities|Array|SetArrayElem :TargetArray {g('Minimum')} :Index {g('MinimumFallbackRow')} :Item true)
@@ -174,6 +183,19 @@ for source in code.values():
     blueprint_dsl.parse(source)
 with toolset_registry.tool_raising_exceptions():
     for name, source in code.items():
+        # Rewritten bodies must not retain old parameter-linked nodes.
+        result_kept = False
+        for old_node in BP.find_nodes(graphs[name]):
+            kind = old_node.get_class().get_name()
+            if kind == "K2Node_FunctionEntry":
+                continue
+            if kind == "K2Node_FunctionResult" and not result_kept:
+                result_kept = True
+                for pin in BP.get_node_infos([old_node])[0].input_pins:
+                    for connected in pin.connected_pins:
+                        BP.break_pins(connected, pin.pin_id)
+                continue
+            BP.delete_node(old_node)
         unreal.log("WO_PROBLEM_LAYOUT_WRITE " + name)
         BP.write_graph_dsl(graphs[name], source)
     BP.compile_blueprint(bp, warnings_as_errors=True)
@@ -181,3 +203,4 @@ with toolset_registry.tool_raising_exceptions():
     Path(unreal.Paths.project_saved_dir(), "WorkerOptimizer-ProblemLayout.dsl").write_text("\n\n".join(code.values()), encoding="utf-8")
 unreal.log("WO_PROBLEM_LAYOUT_GENERATED")
 exec(Path(__file__).with_name("test_action_plan.py").read_text(encoding="utf-8"))
+exec(Path(__file__).with_name("test_native_fire_dependencies.py").read_text(encoding="utf-8"))

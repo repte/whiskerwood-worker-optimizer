@@ -5,6 +5,9 @@ import runpy
 
 import unreal
 
+for name in ("test_manual_surface.py", "test_manual_application.py", "test_native_fire_dependencies.py", "test_pinned_incumbents.py"):
+    runpy.run_path(str(Path(__file__).with_name(name)), run_name="__main__")
+
 runpy.run_path(str(Path(__file__).with_name("test_flexible_minimum.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("test_auto_assignment.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("test_failure_diagnostics.py")), run_name="__main__")

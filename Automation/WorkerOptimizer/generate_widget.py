@@ -9,6 +9,7 @@ from editor_toolset.toolsets import blueprint_dsl
 from ui_authoring import widget as reset_widget, color as token_color, native, control_brush, font_size, nine_slice_brush, image_wrapper_functions, image_wrapper_code, image_wrappers
 
 ROOT = "/Game/Mods/WorkerOptimizer"
+MANUAL_ONLY = True
 load = lambda name: unreal.load_class(None, ROOT + "/" + name + "." + name + "_C")
 umg = unreal.get_default_object(unreal.UMGToolSet)
 call = lambda name, *args: umg.call_method(name, args=args)
@@ -77,7 +78,7 @@ def button_style(widget, icon_only=False):
 root, _ = add(unreal.CanvasPanel, "Root")
 root.set_visibility(unreal.SlateVisibility.SELF_HIT_TEST_INVISIBLE)
 controls, slot = add(unreal.CanvasPanel, "Controls", root, True)
-box(slot, 180, -170, 120, 46, True)
+box(slot, 180, -170, 40 if MANUAL_ONLY else 120, 40 if MANUAL_ONLY else 46, True)
 controls.set_visibility(unreal.SlateVisibility.SELF_HIT_TEST_INVISIBLE)
 action, slot = add(unreal.Button, "ActionButton", controls, True)
 box(slot, 0, 0, 40, 40)
@@ -167,6 +168,9 @@ key_font.set_editor_property("size", 13)
 text_style.set_editor_property("font", key_font)
 text_style.set_editor_property("color_and_opacity", unreal.SlateColor(unreal.LinearColor(1, 1, 1, 1)))
 selector.set_editor_property("text_style", text_style)
+if MANUAL_ONLY:
+    for dormant in (settings, history_button, panel, selector, panel_scale):
+        dormant.set_visibility(unreal.SlateVisibility.COLLAPSED)
 unreal.WorkerOptimizerUIAuthoring.create_pulse_animation(bp, 'GeometryPulse', 0.25)
 BP.compile_blueprint(bp)
 
@@ -613,6 +617,36 @@ for state,key,symbol,texture in ((3,'ok','\u2713','Completed'),(4,'warn','\u25b3
 code['ApplyActionDisplay']=code['ApplyActionDisplay'].replace("    (switch int ", '    '+' '.join(badge_updates)+'\n    (switch int ')
 code.update(image_wrapper_code())
 
+# Retain the feature definitions and assets without entering their runtime paths.
+if MANUAL_ONLY:
+    code["InitializeUI"] = f"""(fn InitializeUI (InputController InputConfig)
+        (if {g('Closed')} (return false))
+        (if {g('Initialized')} (return (and (== InputController {g('Controller')}) (== InputConfig {g('Config')}))))
+        (if (or (not {present('InputController')}) (not {present('InputConfig')})) (return false))
+        (if (not {present(g('ActionButton'))}) (return false))
+        {put('Controller', 'InputController')} {put('Config', 'InputConfig')}
+        (bind texts (Game|ConstructObjectfromClass :Class "{ROOT}/BP_PrioritySettings.BP_PrioritySettings_C" :self self))
+        {put('Texts', 'texts')} {put('Initialized', 'true')} {put('ButtonVisible', 'true')}
+        {put('SettingsOpen', 'false')} {visible('Controls', 'SelfHitTestInvisible')}
+        (CallFunction|BindController) {put('NotificationsBound', 'true')}
+        (CallFunction|RefreshUI) (return true))"""
+    for name in ("ToggleButton", "ToggleSettings", "InitializePanel", "OpenLogbook", "SyncKey", "IsCapturing"):
+        code[name] = f"(fn {name} () (return false))"
+    code["KeyChanged"] = "(fn KeyChanged (Chord) (return false))"
+    code["OnPanelEvent"] = "(fn OnPanelEvent () (return))"
+    code["RefreshUI"] = f"""(fn RefreshUI () {guard}
+        (if (not {present(g('Controller'))}) (return false))
+        (CallFunction|RefreshDisplayState) (CallFunction|RefreshLayout) (CallFunction|ApplyActionDisplay)
+        (return true))"""
+    code["ApplyActionDisplay"] = code["ApplyActionDisplay"].replace(
+        visible("BusyText", "HitTestInvisible"), visible("BusyText", "Collapsed"))
+    code["ShutdownUI"] = f"""(fn ShutdownUI ()
+        (if (and {g('NotificationsBound')} {present(g('Controller'))}) (CallFunction|UnbindController))
+        {put('Closed', 'true')} {put('Initialized', 'false')} {put('SettingsOpen', 'false')}
+        {put('ButtonVisible', 'false')} {put('NotificationsBound', 'false')}
+        (if {present(g('Controls'))} {visible('Controls', 'Collapsed')})
+        (Variables|Default|SetController) (Variables|Default|SetConfig) (Variables|Default|SetTexts) (return true))"""
+
 def wire_delegate(function, field, owner, dispatcher, callback, unbind=False, animation=False):
     graph=graphs[function]
     infos=BP.get_node_infos(BP.find_nodes(graph))
@@ -638,6 +672,19 @@ for function, source in code.items():
 with toolset_registry.tool_raising_exceptions():
     for name, source in code.items():
         unreal.log("WO_WIDGET_WRITE " + name)
+        # Parameter links otherwise keep stale generated bodies reachable.
+        result_kept = False
+        for node in BP.find_nodes(graphs[name]):
+            kind = node.get_class().get_name()
+            if kind == "K2Node_FunctionEntry":
+                continue
+            if kind == "K2Node_FunctionResult" and not result_kept:
+                result_kept = True
+                for pin in BP.get_node_infos([node])[0].input_pins:
+                    for connected in pin.connected_pins:
+                        BP.break_pins(connected, pin.pin_id)
+                continue
+            BP.delete_node(node)
         BP.write_graph_dsl(graphs[name], source)
     image_wrappers(bp)
     for prefix,field,owner,dispatcher,callback in binding_specs:
@@ -648,12 +695,13 @@ with toolset_registry.tool_raising_exceptions():
     event_graph = BP.get_graph(bp, "EventGraph")
     for node in BP.find_nodes(event_graph):
         BP.delete_node(node)
-    for widget, event, handler, kind in (
+    event_bindings = (
         ("ActionButton", "OnClicked", "ClickAction", unreal.Button),
         ("SettingsButton", "OnClicked", "ToggleSettings", unreal.Button),
         ("LogbookButton", "OnClicked", "OpenLogbook", unreal.Button),
         ("KeySelector", "OnKeySelected", "KeyChanged", unreal.InputKeySelector),
-    ):
+    )
+    for widget, event, handler, kind in (event_bindings[:1] if MANUAL_ONLY else event_bindings):
         old = set(str(n.get_path_name()) for n in BP.find_nodes(event_graph))
         assert call("BindToEventProperty", bp, event, widget, kind.static_class())
         nodes = [n for n in BP.find_nodes(event_graph) if str(n.get_path_name()) not in old]

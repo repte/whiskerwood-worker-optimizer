@@ -101,7 +101,8 @@ def scheduling_clock_boundary():
         source = BP.read_graph_dsl(BP.get_graph(bp, name))
         assert "ReadSchedulingClock" in source and "|ReadClock)" not in source
     lifecycle = unreal.load_asset("/Game/Mods/WorkerOptimizer/BP_MapLoad")
-    assert "ReadSchedulingClock" in BP.read_graph_dsl(BP.get_graph(lifecycle, "PollAutomatic"))
+    automatic_calls = {node.type_id.rsplit("|", 1)[-1] for node in BP.get_node_infos(BP.find_nodes(BP.get_graph(lifecycle, "PollAutomatic")))}
+    assert not automatic_calls & {"ReadSchedulingClock", "Poll", "BeginTriggeredRun"}, "The retained scheduler must stay disconnected from manual-only lifecycle execution"
     child_path = "/Game/WorkerOptimizerEditorTests/BP_SchedulingClockInput"
     child = BP.create("/Game/WorkerOptimizerEditorTests", "BP_SchedulingClockInput", bp.generated_class())
     actor = None

@@ -23,8 +23,8 @@ for kind, names in {
     "bool": "BuildActive BuildDone BuildSucceeded",
     "int": "Stage BuildingIndex SlotIndex RowIndex",
     "name": "FailureCode",
-    "int[]": "FinalWorkers RowBuildings RowSlots OldWorkers SeenTargets BuildingStarts ActionBuildings ActionSlots ActionWorkers",
-    "bool[]": "Required BuildingHasAny BuildingHasMovable BuildingMissingRequired ActionFire",
+    "int[]": "FinalWorkers RowBuildings RowSlots OldWorkers CurrentWorkers SeenTargets BuildingStarts ActionBuildings ActionSlots ActionWorkers",
+    "bool[]": "Required NativeRequired BuildingHasAny BuildingHasMovable BuildingMissingRequired BuildingNeedsFirstMinimum ActionFire",
 }.items():
     for name in names.split():
         if name not in existing:
@@ -37,12 +37,29 @@ definitions = {
     "CaptureRow": [],
     "ValidateRow": [],
     "AppendAction": [("Fire", "bool")],
+    "NeedsFirstMinimum": [("Index", "int")],
+    "AppendRowAction": [("Index", "int"), ("Worker", "int"), ("Fire", "bool")],
+    "ReleaseRow": [("Index", "int")],
+    "QueueMove": [],
     "AdvanceBuild": [],
 }
 graphs = {}
 existing_graphs = {str(g.get_name()) for g in BP.list_graphs(bp)}
 for name, params in definitions.items():
     graphs[name] = BP.get_graph(bp, name) if name in existing_graphs else BP.add_function_graph(bp, name)
+    if name in existing_graphs:
+        result_kept = False
+        for node in BP.find_nodes(graphs[name]):
+            kind = node.get_class().get_name()
+            if kind == "K2Node_FunctionEntry":
+                continue
+            if kind == "K2Node_FunctionResult" and not result_kept:
+                result_kept = True
+                for pin in BP.get_node_infos([node])[0].input_pins:
+                    for connected in pin.connected_pins:
+                        BP.break_pins(connected, pin.pin_id)
+                continue
+            BP.delete_node(node)
     if name not in existing_graphs:
         for param, kind in params:
             if isinstance(kind, str):
@@ -96,7 +113,7 @@ def fail(reason):
 
 
 queue_names = "ActionBuildings ActionSlots ActionWorkers ActionFire".split()
-arrays = "Targets SeenOccupants FinalWorkers RowBuildings RowSlots OldWorkers SeenTargets BuildingStarts Required BuildingHasAny BuildingHasMovable BuildingMissingRequired".split() + queue_names
+arrays = "Targets SeenOccupants FinalWorkers RowBuildings RowSlots OldWorkers CurrentWorkers SeenTargets BuildingStarts Required NativeRequired BuildingHasAny BuildingHasMovable BuildingMissingRequired BuildingNeedsFirstMinimum".split() + queue_names
 clear_queue = " ".join(f"(Utilities|Array|Clear {g(n)})" for n in queue_names)
 code = {}
 code["HasObject"] = """(fn HasObject (Object)
@@ -114,6 +131,23 @@ code["BeginBuild"] = f"""(fn BeginBuild (InputSnapshot InputWorkers)
     (if (> (Utilities|Array|Length InputWorkers) 10000) {fail('invalid_shape')})
     {put('Snapshot', 'InputSnapshot')} {put('FinalWorkers', 'InputWorkers')}
     {put('BuildActive', 'true')} (return true))"""
+code["NeedsFirstMinimum"] = f"""(fn NeedsFirstMinimum (Index)
+    (bind school (Actor|GetComponentbyClass :self {at(sg('Buildings'), 'Index')} :ComponentClass "/Script/ProjectArco.School"))
+    (if {present('school')} (return false))
+    {unpack('WorkerAssignment', at(sg('Workforces'), 'Index'), 'wf')}
+    (for slot wf_m_workerSlots
+      {unpack('WorkerSlot', 'slot', 's')}
+      (if s_bIsRequiredToRun (return false)))
+    ; A retained incumbent already supplies a flexible building's first worker.
+    (for i (range (Utilities|Array|Length wf_m_workerSlots))
+      (bind row (+ {at(g('BuildingStarts'), 'Index')} i))
+      (if (not (Utilities|Array|IsValidIndex {g('FinalWorkers')} row)) (return false))
+      (bind target {at(g('FinalWorkers'), 'row')})
+      (if (== target -2) (return false))
+      (if (Utilities|Array|IsValidIndex {sg('Workers')} target)
+        {unpack('WorkerSlot', at('wf_m_workerSlots', 'i'), 'current')}
+        (if (== current_Agent {at(sg('Workers'), 'target')}) (return false))))
+    (return true))"""
 code["CaptureRow"] = f"""(fn CaptureRow ()
     (if (not (Utilities|Array|IsValidIndex {g('FinalWorkers')} {g('RowIndex')})) {fail('invalid_shape')})
     (bind building {at(sg('Buildings'), g('BuildingIndex'))})
@@ -121,7 +155,13 @@ code["CaptureRow"] = f"""(fn CaptureRow ()
     {unpack('WorkerSlot', at('wf_m_workerSlots', g('SlotIndex')), 'slot')}
     (bind target {row('FinalWorkers')})
     (if (or (< target -2) (>= target (Utilities|Array|Length {sg('Workers')}))) {fail('invalid_worker')})
-    {add('RowBuildings', g('BuildingIndex'))} {add('RowSlots', g('SlotIndex'))} {add('Required', 'slot_bIsRequiredToRun')}
+    (bind school (Actor|GetComponentbyClass :self building :ComponentClass "/Script/ProjectArco.School"))
+    (bind minimum (or slot_bIsRequiredToRun (and (== {g('SlotIndex')} 0) {present('school')})))
+    {add('NativeRequired', 'slot_bIsRequiredToRun')}
+    (if (and {at(g('BuildingNeedsFirstMinimum'), g('BuildingIndex'))} (!= target -1))
+      {add('Required', 'true')} {set_item('BuildingNeedsFirstMinimum', g('BuildingIndex'), 'false')}
+      (else {add('Required', 'minimum')}))
+    {add('RowBuildings', g('BuildingIndex'))} {add('RowSlots', g('SlotIndex'))}
     (if {present('slot_Agent')}
       (if (Utilities|Array|ContainsItem {g('SeenOccupants')} slot_Agent) {fail('duplicate_occupant')})
       {add('SeenOccupants', 'slot_Agent')}
@@ -144,7 +184,7 @@ code["CaptureRow"] = f"""(fn CaptureRow ()
         (if (== target -2) {add('Targets', 'slot_Agent')}
           (else (Utilities|Array|Add :TargetArray {g('Targets')})))))
     (if (== target -1)
-      (if slot_bIsRequiredToRun {set_item('BuildingMissingRequired', g('BuildingIndex'), 'true')})
+      (if minimum {set_item('BuildingMissingRequired', g('BuildingIndex'), 'true')})
       (else {set_item('BuildingHasAny', g('BuildingIndex'), 'true')}))
     (return true))"""
 code["ValidateRow"] = f"""(fn ValidateRow ()
@@ -153,7 +193,8 @@ code["ValidateRow"] = f"""(fn ValidateRow ()
     (if (== {row('FinalWorkers')} -1) (return true))
     (bind firstRow {at(g('BuildingStarts'), 'buildingIndex')})
     (bind teacher {at(g('Targets'), 'firstRow')})
-    (if (== {row('FinalWorkers')} -2)
+    (if (or (== {row('FinalWorkers')} -2)
+      (and {row('NativeRequired')} (== {row('FinalWorkers')} {row('OldWorkers')})))
       (bind schoolComponent (Actor|GetComponentbyClass :self {at(sg('Buildings'), 'buildingIndex')} :ComponentClass "/Script/ProjectArco.School"))
       (if (not {present('schoolComponent')}) (return true))
       (if (== {row('RowSlots')} 0) (return true))
@@ -168,6 +209,35 @@ code["AppendAction"] = f"""(fn AppendAction (Fire)
     {add('ActionBuildings', row('RowBuildings'))} {add('ActionSlots', row('RowSlots'))} {add('ActionFire', 'Fire')}
     (if Fire {add('ActionWorkers', row('OldWorkers'))} (else {add('ActionWorkers', row('FinalWorkers'))}))
     (return true))"""
+code["AppendRowAction"] = f"""(fn AppendRowAction (Index Worker Fire)
+    {add('ActionBuildings', at(g('RowBuildings'), 'Index'))} {add('ActionSlots', at(g('RowSlots'), 'Index'))}
+    {add('ActionWorkers', 'Worker')} {add('ActionFire', 'Fire')} (return true))"""
+code["ReleaseRow"] = f"""(fn ReleaseRow (Index)
+    (bind worker {at(g('CurrentWorkers'), 'Index')})
+    (if (< worker 0) (return true))
+    ; Native required-slot firing also clears every optional slot in this building.
+    (if {at(g('NativeRequired'), 'Index')}
+      (bind building {at(g('RowBuildings'), 'Index')})
+      {unpack('WorkerAssignment', at(sg('Workforces'), 'building'), 'original')}
+      (for slotIndex (range (Utilities|Array|Length original_m_workerSlots))
+        (bind optionalRow (+ {at(g('BuildingStarts'), 'building')} slotIndex))
+        (if (not {at(g('NativeRequired'), 'optionalRow')})
+          (bind optionalWorker {at(g('CurrentWorkers'), 'optionalRow')})
+          (if (== optionalWorker -2) {fail('protected_dependency')})
+          (if (>= optionalWorker 0)
+            (CallFunction|AppendRowAction :Index optionalRow :Worker optionalWorker :Fire true)
+            {set_item('CurrentWorkers', 'optionalRow', '-1')}))))
+    (CallFunction|AppendRowAction :Index Index :Worker worker :Fire true)
+    {set_item('CurrentWorkers', 'Index', '-1')} (return true))"""
+code["QueueMove"] = f"""(fn QueueMove ()
+    (bind target {row('FinalWorkers')})
+    (if (or (< target 0) (== target {row('CurrentWorkers')})) (return true))
+    (bind origin (Utilities|Array|FindItem {g('CurrentWorkers')} target))
+    (if (not (CallFunction|ReleaseRow :Index {g('RowIndex')})) (return false))
+    (if (>= origin 0)
+      (if (not (CallFunction|ReleaseRow :Index origin)) (return false)))
+    (CallFunction|AppendRowAction :Index {g('RowIndex')} :Worker target :Fire false)
+    {set_item('CurrentWorkers', g('RowIndex'), 'target')} (return true))"""
 code["AdvanceBuild"] = f"""(fn AdvanceBuild ()
     (if (not {g('BuildActive')}) (return false))
     (if (not {present(g('Snapshot'))}) {fail('invalid_snapshot')})
@@ -175,7 +245,7 @@ code["AdvanceBuild"] = f"""(fn AdvanceBuild ()
     (if (== {g('Stage')} 6)
       (if (>= {g('BuildingIndex')} (Utilities|Array|Length {sg('Buildings')}))
         {put('BuildingIndex', '0')} {put('Stage', '0')} (return true))
-      {add('BuildingStarts', '-1')} {add('BuildingHasAny', 'false')} {add('BuildingHasMovable', 'false')} {add('BuildingMissingRequired', 'false')}
+      {add('BuildingStarts', '-1')} {add('BuildingHasAny', 'false')} {add('BuildingHasMovable', 'false')} {add('BuildingMissingRequired', 'false')} {add('BuildingNeedsFirstMinimum', 'false')}
       {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')} (return true))
     (if (== {g('Stage')} 0)
       (if (>= {g('BuildingIndex')} (Utilities|Array|Length {sg('Buildings')}))
@@ -184,7 +254,9 @@ code["AdvanceBuild"] = f"""(fn AdvanceBuild ()
       (if (== {g('SlotIndex')} 0)
         (bind unchanged (Class|BPWorkforceSnapshot|BuildingUnchanged :self {g('Snapshot')} :Index {g('BuildingIndex')}))
         (if (not unchanged) {fail('world_changed')})
-        {set_item('BuildingStarts', g('BuildingIndex'), g('RowIndex'))})
+        {set_item('BuildingStarts', g('BuildingIndex'), g('RowIndex'))}
+        (bind flexible (CallFunction|NeedsFirstMinimum :Index {g('BuildingIndex')}))
+        {set_item('BuildingNeedsFirstMinimum', g('BuildingIndex'), 'flexible')})
       {unpack('WorkerAssignment', at(sg('Workforces'), g('BuildingIndex')), 'wf')}
       (if (>= {g('SlotIndex')} (Utilities|Array|Length wf_m_workerSlots))
         {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')} {put('SlotIndex', '0')} (return true))
@@ -203,25 +275,40 @@ code["AdvanceBuild"] = f"""(fn AdvanceBuild ()
       {put('RowIndex', f'(+ {g("RowIndex")} 1)')} (return true))
     (if (== {g('Stage')} 2)
       (if (>= {g('RowIndex')} (Utilities|Array|Length {g('FinalWorkers')}))
-        {put('Stage', '3')} {put('RowIndex', f'(- (Utilities|Array|Length {g("FinalWorkers")}) 1)')} (return true))
+        {put('CurrentWorkers', g('OldWorkers'))} {put('Stage', '3')} {put('RowIndex', '0')} (return true))
       (bind valid (CallFunction|ValidateRow))
       (if (not valid) (return false))
       {put('RowIndex', f'(+ {g("RowIndex")} 1)')} (return true))
-    (if (== {g('Stage')} 3)
-      (if (< {g('RowIndex')} 0) {put('Stage', '4')} {put('RowIndex', '0')} (return true))
-      (if (and (>= {row('OldWorkers')} 0) (!= {row('OldWorkers')} {row('FinalWorkers')})) (CallFunction|AppendAction :Fire true))
+    (if (== {g('Stage')} 5)
+      (if (< {g('RowIndex')} 0)
+        {put('BuildActive', 'false')} {put('BuildDone', 'true')} {put('BuildSucceeded', 'true')} (return true))
+      (if (and (>= {row('CurrentWorkers')} 0) (!= {row('CurrentWorkers')} {row('FinalWorkers')}))
+        (if (not (CallFunction|ReleaseRow :Index {g('RowIndex')})) (return false)))
       {put('RowIndex', f'(- {g("RowIndex")} 1)')} (return true))
     (if (>= {g('RowIndex')} (Utilities|Array|Length {g('FinalWorkers')}))
-      (if (== {g('Stage')} 4) {put('Stage', '5')} {put('RowIndex', '0')} (return true))
-      {put('BuildActive', 'false')} {put('BuildDone', 'true')} {put('BuildSucceeded', 'true')} (return true))
-    (if (and (>= {row('FinalWorkers')} 0) (!= {row('OldWorkers')} {row('FinalWorkers')}))
-      (if (== {row('Required')} (== {g('Stage')} 4)) (CallFunction|AppendAction :Fire false)))
+      (if (== {g('Stage')} 3) {put('Stage', '4')} {put('RowIndex', '0')} (return true))
+      {put('Stage', '5')} {put('RowIndex', f'(- (Utilities|Array|Length {g("FinalWorkers")}) 1)')} (return true))
+    (if (== {row('Required')} (== {g('Stage')} 3))
+      (if (not (CallFunction|QueueMove)) (return false)))
     {put('RowIndex', f'(+ {g("RowIndex")} 1)')} (return true))"""
 
 for source in code.values():
     blueprint_dsl.parse(source)
 with toolset_registry.tool_raising_exceptions():
     for name, source in code.items():
+        # Rewritten bodies must not retain old parameter-linked nodes.
+        result_kept = False
+        for old_node in BP.find_nodes(graphs[name]):
+            kind = old_node.get_class().get_name()
+            if kind == "K2Node_FunctionEntry":
+                continue
+            if kind == "K2Node_FunctionResult" and not result_kept:
+                result_kept = True
+                for pin in BP.get_node_infos([old_node])[0].input_pins:
+                    for connected in pin.connected_pins:
+                        BP.break_pins(connected, pin.pin_id)
+                continue
+            BP.delete_node(old_node)
         unreal.log("WO_ACTION_PLAN_WRITE " + name)
         BP.write_graph_dsl(graphs[name], source)
     BP.compile_blueprint(bp, warnings_as_errors=True)

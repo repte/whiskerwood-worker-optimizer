@@ -124,14 +124,13 @@ def run():
         ready()
         assert call("RecordDispatch", True, 10.0)
         assert not call("ObserveAction", building, 21.0)
-        assert prop("Done") and not prop("Succeeded") and prop("Waiting")
+        assert prop("Done") and not prop("Succeeded") and not prop("Waiting")
         assert str(prop("FailureCode")) == "action_timeout"
-        assert not start([True]), "An unconfirmed native action must block overlapping runs"
         occupy(None)
-        assert call("ObserveAction", None, 22.0), "Late result may resolve uncertainty, never resume the stopped queue"
+        assert not call("ObserveAction", None, 22.0), "Stopped synchronous actions cannot accept a later unrelated change"
         assert not prop("Waiting") and prop("Done") and not prop("Succeeded")
-        assert not prop("Active") and prop("AppliedCount") == 1
-        assert prop("ConfirmedFires") == 1 and prop("ConfirmedHires") == 0
+        assert not prop("Active") and prop("AppliedCount") == 0
+        assert prop("ConfirmedFires") == 0 and prop("ConfirmedHires") == 0
         call("AdvanceApplication", 23.0)
         assert prop("QueuedCount") == 1
 
@@ -153,13 +152,13 @@ def run():
         put(wf, "bDisabled", True)
         put(component, "m_workers", wf)
         assert not call("ObserveAction", building, 10.5)
-        assert prop("Done") and not prop("Succeeded") and prop("Waiting")
+        assert prop("Done") and not prop("Succeeded") and not prop("Waiting")
         assert str(prop("FailureCode")) == "world_changed"
         assert component.get_editor_property("m_workers").get_editor_property("m_workerSlots")[0].get_editor_property("Agent") == worker
         occupy(None)
-        assert call("ObserveAction", None, 11.0), "Exact fire receipt must settle despite changed disabled state"
+        assert not call("ObserveAction", None, 11.0), "A stopped action cannot acquire a late receipt"
         assert not prop("Waiting") and prop("Done") and not prop("Succeeded") and not prop("Active")
-        assert prop("ConfirmedFires") == 1 and prop("AppliedCount") == 1
+        assert prop("ConfirmedFires") == 0 and prop("AppliedCount") == 0
         assert str(prop("FailureCode")) == "world_changed"
         assert not call("ObserveAction", None, 11.5), "Fallback confirmation counts once"
         call("AdvanceApplication", 12.0)
@@ -178,8 +177,6 @@ def run():
 
         pending(False)
         occupy(worker)
-        assert not call("ObserveAction", None, 10.5), "Slot alone is not a hire receipt"
-        assert prop("Waiting") and prop("AppliedCount") == 0
         assert call("ObserveAction", building, 11.0), "Exact hire receipt settles despite hard drift"
         assert not prop("Waiting") and prop("ConfirmedHires") == 1 and prop("ConfirmedFires") == 0
         assert prop("Done") and not prop("Succeeded") and not prop("Active")
@@ -191,11 +188,9 @@ def run():
         pending()
         occupy(None)
         assert not call("ObserveAction", building, 11.0), "Slot alone is not a fire receipt"
-        assert prop("Waiting") and prop("AppliedCount") == 0
-        assert not call("ObserveAction", building, 25.0), "Deadline cannot release an unproven command"
-        assert prop("Waiting") and not start([True])
-        assert call("ObserveAction", None, 26.0)
-        assert str(prop("FailureCode")) == "world_changed" and prop("ConfirmedFires") == 1
+        assert not prop("Waiting") and prop("AppliedCount") == 0
+        assert not call("ObserveAction", None, 26.0)
+        assert str(prop("FailureCode")) == "world_changed" and prop("ConfirmedFires") == 0
 
         pending()
         occupy(None)
@@ -203,10 +198,10 @@ def run():
         assert ch.import_text("(ID=999)")
         put(worker, "m_characteristics", ch)
         assert not call("ObserveAction", None, 11.0), "Changed worker ID cannot confirm the original command"
-        assert prop("Waiting") and prop("AppliedCount") == 0
+        assert not prop("Waiting") and prop("AppliedCount") == 0
         assert ch.import_text("(ID=800)")
         put(worker, "m_characteristics", ch)
-        assert call("ObserveAction", None, 12.0)
+        assert not call("ObserveAction", None, 12.0)
 
         pending()
         ch = worker.get_editor_property("m_characteristics")
@@ -222,13 +217,13 @@ def run():
         pending()
         put(wf, "m_workerSlots", [])
         put(component, "m_workers", wf)
-        assert not call("ObserveAction", None, 11.0), "Missing target slot leaves command unresolved"
-        assert prop("Waiting") and prop("AppliedCount") == 0
+        assert not call("ObserveAction", None, 11.0), "Missing target slot fails the observation without locking the next run"
+        assert not prop("Waiting") and prop("AppliedCount") == 0
         assert not call("ObserveAction", None, 25.0)
-        assert prop("Waiting") and prop("QueuedCount") == 1
+        assert not prop("Waiting") and prop("QueuedCount") == 1
         assert wf.import_text("(bDisabled=True,m_workerSlots=((bIsRequiredToRun=True)))")
         put(component, "m_workers", wf)
-        assert call("ObserveAction", None, 26.0)
+        assert not call("ObserveAction", None, 26.0)
 
         pending(False)
         other = spawn(native("Prototype_Agent"))
@@ -237,17 +232,17 @@ def run():
         put(other, "m_characteristics", other_ch)
         occupy(other)
         assert not call("ObserveAction", building, 11.0), "Same-ID other occupant cannot acknowledge the pending worker"
-        assert prop("Waiting") and prop("AppliedCount") == 0
+        assert not prop("Waiting") and prop("AppliedCount") == 0
         occupy(worker)
-        assert call("ObserveAction", building, 12.0)
+        assert not call("ObserveAction", building, 12.0)
 
         pending(False)
         occupy(worker)
         other_building = spawn(native("GridActor"))
         put(other_building, "ID", 801)
         assert not call("ObserveAction", other_building, 11.0), "Same-ID wrong reported workplace cannot acknowledge the original target"
-        assert prop("Waiting") and prop("AppliedCount") == 0
-        assert call("ObserveAction", building, 12.0)
+        assert not prop("Waiting") and prop("AppliedCount") == 0
+        assert not call("ObserveAction", building, 12.0)
 
         put(wf, "bDisabled", False)
         capture(worker)
@@ -256,13 +251,13 @@ def run():
         ready()
         assert call("RecordDispatch", True, 10.0)
         assert not call("ObserveAction", building, 21.0)
-        assert str(prop("FailureCode")) == "action_timeout" and prop("Waiting")
+        assert str(prop("FailureCode")) == "action_timeout" and not prop("Waiting")
         put(wf, "bDisabled", True)
         occupy(None)
-        assert call("ObserveAction", None, 22.0), "Late drift receipt settles but does not convert timeout into success or retry"
+        assert not call("ObserveAction", None, 22.0), "An unrelated later effect never converts failure into success"
         assert str(prop("FailureCode")) == "action_timeout"
         assert not prop("Waiting") and not prop("Active") and not prop("Succeeded")
-        assert prop("ConfirmedFires") == 1 and prop("QueuedCount") == 1
+        assert prop("ConfirmedFires") == 0 and prop("QueuedCount") == 1
 
         runner = unreal.new_object(cls)
         assert wf.import_text("(bDisabled=False,m_workerSlots=((educationRequirement=Master,bIsRequiredToRun=True)))")
@@ -282,7 +277,7 @@ def run():
         assert prop("ConfirmedHires") == 1 and prop("AppliedCount") == 1 and prop("QueuedCount") == 1
         call("AdvanceApplication", 12.0)
         assert prop("QueuedCount") == 1
-        unreal.log("WO_APPLICATION_RUNNER_TESTS_PASS: exact drift receipts, unresolved lock, once-only counts, stopped remainder, timeout/late result, pause, rejection, invalid inputs and no native actions executed")
+        unreal.log("WO_APPLICATION_RUNNER_TESTS_PASS: exact synchronous receipts, terminal unlock, once-only counts, stopped remainder, pause, rejection, invalid inputs; native effects supplied at explicit boundaries")
     finally:
         for actor in reversed(spawned):
             actors.destroy_actor(actor)

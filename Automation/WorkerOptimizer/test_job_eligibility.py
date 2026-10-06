@@ -1,4 +1,4 @@
-"""Production role checks, including school admission and special education filters."""
+"""Production role checks must satisfy native hire admission, including schools."""
 
 import unreal
 
@@ -18,8 +18,9 @@ def run():
     assert eligible(0, 0)
     assert eligible(3, 1) and not eligible(1, 3)
     assert eligible(7, 5) and not eligible(3, 5)
-    assert eligible(1, 128) and not eligible(3, 128), "ApprenticeOnly is not an ordinary mask"
-    assert eligible(16, 64) and not eligible(48, 64), "SailorOnly excludes officers"
+    assert not eligible(1, 128), "Selector-only ApprenticeOnly acceptance is rejected by native hire"
+    assert not eligible(16, 64), "Selector-only SailorOnly acceptance is rejected by native hire"
+    assert eligible(128, 128) and eligible(64, 64), "Native hire compares the actual slot mask"
     assert eligible(0, 4, True) and not eligible(4, 4, True), "Students must not already have the target education"
     assert eligible(1, 3, True) and not eligible(3, 3, True)
     assert not eligible(0, 0, True, "bakers", "bakers")
@@ -28,9 +29,7 @@ def run():
     assert eligible(0, 0, False, "bakers", "bakers"), "Teacher guild exclusion is student-only"
     for education in range(64):
         for required in (*range(64), 64, 128):
-            expected = ((education & 3) == 1 if required == 128 else
-                        (education & 48) == 16 if required == 64 else
-                        (education & required) == required)
+            expected = (education & required) == required
             assert eligible(education, required) == expected, (education, required)
             expected_student = required == 0 or (education & required) != required
             assert eligible(education, required, True) == expected_student
@@ -82,6 +81,14 @@ def run():
         assert not can(school_building, 0)
         assert can(school_building, 0, candidate=teacher)
         assert can(school_building, 1, teacher)
+        assert sw.import_text("(m_workerSlots=((educationRequirement=Educated,bIsRequiredToRun=True),(educationRequirement=Apprentice)))")
+        put(school, "m_workers", sw)
+        assert not can(school_building, 1, teacher), "Student learning eligibility cannot override the actual slot admission mask"
+        traits(worker, "Apprentice", "farmers")
+        assert can(school_building, 1, teacher), "Student may learn the teacher's target after meeting the pupil slot requirement"
+        assert sw.import_text("(m_workerSlots=((educationRequirement=Educated,bIsRequiredToRun=True),()))")
+        put(school, "m_workers", sw)
+        traits(worker, "None", "farmers")
         assert not can(school_building, 1), "Student placement requires a planned teacher"
         assert not can(school_building, 1, worker), "One worker cannot be teacher and student"
         traits(worker, "Educated", "farmers")
@@ -104,7 +111,7 @@ def run():
         put(school, "m_workers", sw)
         assert rules.call_method("LiveCanFillSlot", args=(worker, school_building, 1))
         assert not rules.call_method("LiveCanFillSlot", args=(teacher, school_building, 1))
-        unreal.log("WO_JOB_ELIGIBILITY_TESTS_PASS: 8448 education/admission cases, special filters, dynamic slots, pause, planned/live teachers, guild exclusions; native game application not exercised")
+        unreal.log("WO_JOB_ELIGIBILITY_TESTS_PASS: native raw-mask admission, selector-only rejection, dynamic slots, pause, planned/live teachers, pupil slot requirements and guild exclusions; native game application not exercised")
     finally:
         for obj in reversed(spawned):
             actors.destroy_actor(obj)

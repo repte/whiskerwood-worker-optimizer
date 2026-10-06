@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0-preview - 7 October 2026
+
+Single-icon preview. In-game validation is pending and will be performed by the user. Workshop files are prepared separately; no Workshop submission is included in this release workflow.
+
+- Show only the manual assignment icon. Settings, priorities and logbook views remain in the code/assets but cannot be opened.
+- Keep the icon visible and disable former visibility shortcuts, including saved bindings.
+- Disable automatic schedules, including schedules saved by earlier releases.
+- Ignore saved priority overrides and strict/weighted mode selections. Active supported buildings use the same priority.
+- Preserve the saved builder reserve, or use the default of one when no value is saved. There is no reserve editor in this preview.
+- Select feasible minimum crews before filling extra positions by worker suitability, subject to reserve and eligibility constraints.
+- Apply dependency moves instead of a global fire-all batch: release the workers needed for the next target and its native dependencies, then hire.
+- Account for the game's required-worker dismissal rule, which also clears optional workers. Explicitly release movable optional workers first and schedule their planned assignments afterward; keep required incumbents fixed where changing them would dismiss protected optional occupants.
+- Check supported native assignment effects immediately after the call returns. Count only observed effects and release the request lock after terminal result processing; returned native failures cannot leave a persistent waiting state.
+- Revise native assignment request handling. This change still needs acceptance in the shipping game; it does not guarantee every requested assignment will succeed.
+
+See [preview validation and limits](releases/v0.3.0-preview.md).
+
 ## 0.2.1-hotfix.1 - 6 October 2026
 
 Pre-release assignment recovery hotfix. In-game acceptance is pending.

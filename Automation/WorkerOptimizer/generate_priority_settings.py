@@ -10,6 +10,7 @@ from editor_toolset.toolsets.blueprint import BlueprintTools as BP, ContainerTyp
 from editor_toolset.toolsets import blueprint_dsl
 
 ROOT = "/Game/Mods/WorkerOptimizer"
+MANUAL_ONLY = True
 bp = unreal.load_asset(ROOT + "/BP_PrioritySettings")
 if bp is None:
     bp = BP.create(ROOT, "BP_PrioritySettings", unreal.Object.static_class())
@@ -360,13 +361,51 @@ code["ReadStrictMode"] = f"""(fn ReadStrictMode (Context)
     (bind value (CallFunction|ReadOption :Context Context :OptionId "WorkerOptimizer.mode" :Fallback "Strict"))
     (bind strict (CallFunction|IsStrictValue :Value value))
     (return strict))"""
+if MANUAL_ONLY:
+    # The saved options remain available for a later feature restoration.
+    code["ReadPriority"] = "(fn ReadPriority (Context Category Type) (return 2))"
+    code["ReadStrictMode"] = "(fn ReadStrictMode (Context) (return true))"
+    code["ReadAutoMode"] = "(fn ReadAutoMode (Context) (return \"off\"))"
+    code["CapturePolicy"] = f"""(fn CapturePolicy (Context)
+        (if (or {arr('PolicyFrozen')} (not {arr('PolicyKeysReady')})) (return false))
+        (if (not (CallFunction|HasObject :Object Context)) (return false))
+        (CallFunction|ReleasePolicy)
+        {put('FrozenCategories', arr('KnownCategories'))} {put('FrozenTypes', arr('KnownTypes'))}
+        (for category {arr('FrozenCategories')} (Utilities|Array|Add {arr('FrozenCategoryValues')} 2))
+        (for type {arr('FrozenTypes')} (Utilities|Array|Add {arr('FrozenTypeValues')} 2))
+        {put('FrozenStrict', 'true')}
+        (bind reserve (CallFunction|ReadOption :Context Context :OptionId "WorkerOptimizer.reserve" :Fallback "1"))
+        (bind count (CallFunction|ParseReserve :Value reserve)) {put('FrozenReserve', 'count')}
+        {put('PolicyFrozen', 'true')} (return true))"""
+    code["RegisterGeneral"] = """(fn RegisterGeneral (Context)
+        (if (not (CallFunction|HasObject :Object Context)) (return false))
+        (bind strings (CallFunction|RegisterStrings :Context Context)) (return strings))"""
+    for kind in ("Category", "Type"):
+        code["Register" + kind] = f"""(fn Register{kind} (Context {kind} Label)
+            (if (not (CallFunction|HasObject :Object Context)) (return false))
+            (if (== {kind} "None") (return false))
+            {api_guard('false')}
+            (Utilities|Array|AddUnique {arr('RegisteredCategories' if kind == 'Category' else 'RegisteredTypes')} {kind})
+            (return true))"""
 for source in code.values():
     blueprint_dsl.parse(source)
 with toolset_registry.tool_raising_exceptions():
     for name, source in code.items():
-        if os.environ.get("WO_UI_PRIORITY_ONLY") == "1" and name not in {"WriteOption", "BeginPolicyKeys", "AddPolicyKey", "EnsureDefinitionOptions", "Localize", "ParsePriority", "IsStrictValue"}:
+        if not MANUAL_ONLY and os.environ.get("WO_UI_PRIORITY_ONLY") == "1" and name not in {"WriteOption", "BeginPolicyKeys", "AddPolicyKey", "EnsureDefinitionOptions", "Localize", "ParsePriority", "IsStrictValue"}:
             continue
         unreal.log("WO_PRIORITY_SETTINGS_WRITE " + name)
+        result_kept = False
+        for node in BP.find_nodes(graphs[name]):
+            kind = node.get_class().get_name()
+            if kind == "K2Node_FunctionEntry":
+                continue
+            if kind == "K2Node_FunctionResult" and not result_kept:
+                result_kept = True
+                for pin in BP.get_node_infos([node])[0].input_pins:
+                    for connected in pin.connected_pins:
+                        BP.break_pins(connected, pin.pin_id)
+                continue
+            BP.delete_node(node)
         BP.write_graph_dsl(graphs[name], source)
     BP.compile_blueprint(bp, warnings_as_errors=True)
     defaults = unreal.get_default_object(bp.generated_class())

@@ -1,7 +1,7 @@
 """Generate a guarded native action transport, without runtime helper classes.
 
-The transport enforces live slot-lock and school eligibility before dispatch.
-This asset alone is not a complete assignment application workflow.
+The transport enforces live admission before dispatch and verifies the immediate
+slot result of the native action. Supported native writers mutate synchronously.
 """
 
 from pathlib import Path
@@ -37,6 +37,7 @@ definitions = {
     "InitializeBridge": [("Widget", native("ArcoView"))],
     "ValidateAction": params + [("ReportedWorkplace", native("GridActor"))],
     "QueueAction": params,
+    "ConfirmNativeResult": params,
     "RejectAction": [("Guard", "name")],
 }
 existing_graphs = {str(g.get_name()) for g in BP.list_graphs(bp)}
@@ -148,6 +149,27 @@ code["ValidateAction"] = f"""(fn ValidateAction (Snapshot BuildingIndex SlotInde
             ({valid} ReportedWorkplace (:"Is Valid" {reject('worker_not_free')})
               (:"Is Not Valid"
                 ({valid} slot_Agent (:"Is Valid" {reject('slot_occupied')}) (:"Is Not Valid" (return true))))))))))"""
+code["ConfirmNativeResult"] = f"""(fn ConfirmNativeResult (Snapshot BuildingIndex SlotIndex WorkerIndex Fire)
+    (Variables|Default|SetRejectionGuard "None")
+    ({valid} Snapshot
+      (:"Is Not Valid" {reject('native_result_unavailable')})
+      (:"Is Valid"
+        (if (not (Utilities|Array|IsValidIndex {sg('Buildings')} BuildingIndex)) {reject('native_result_unavailable')})
+        (if (not (Utilities|Array|IsValidIndex {sg('Workers')} WorkerIndex)) {reject('native_result_unavailable')})
+        (bind building {at(sg('Buildings'), 'BuildingIndex')})
+        (bind worker {at(sg('Workers'), 'WorkerIndex')})
+        ({valid} worker (:"Is Not Valid" {reject('native_result_unavailable')})
+          (:"Is Valid"
+            (bind (known workforce) (Class|BPWorkplaceAdapter|ReadWorkplace :self Snapshot :Building building))
+            (if (not known) {reject('native_result_unavailable')})
+            {unpack('WorkerAssignment', 'workforce', 'wf')}
+            (if (not (Utilities|Array|IsValidIndex wf_m_workerSlots SlotIndex)) {reject('native_result_unavailable')})
+            {unpack('WorkerSlot', at('wf_m_workerSlots', 'SlotIndex'), 'slot')}
+            (if Fire
+              ({valid} slot_Agent (:"Is Valid" {reject('native_rejected')}) (:"Is Not Valid" (return true)))
+              (else
+                (if (!= slot_Agent worker) {reject('native_rejected')})
+                (return true))))))))"""
 code["QueueAction"] = f"""(fn QueueAction (Snapshot BuildingIndex SlotIndex WorkerIndex Fire)
     (Variables|Default|SetRejectionGuard "None")
     (if (not {g('BridgeReady')}) {reject('not_ready')})
@@ -175,12 +197,26 @@ code["QueueAction"] = f"""(fn QueueAction (Snapshot BuildingIndex SlotIndex Work
                     (WorkerOptimizerNativeBridge|ReceiveHudAction :self self :HudAction
                       (Utilities|Struct|MakeHudAction :action "hireWorkerForSlot" :paramInt ch_ID :paramFloat SlotIndex))))
                 (Variables|Default|SetQueuedActions (+ {g('QueuedActions')} 1))
-                (return true))))))))"""
+                (bind applied (CallFunction|ConfirmNativeResult :Snapshot Snapshot :BuildingIndex BuildingIndex :SlotIndex SlotIndex :WorkerIndex WorkerIndex :Fire Fire))
+                (return applied))))))))"""
 for name, source in code.items():
     unreal.log("WO_ACTION_BRIDGE_PARSE " + name)
     blueprint_dsl.parse(source)
 with toolset_registry.tool_raising_exceptions():
     for name, source in code.items():
+        # Every rewritten body can retain stale parameter-linked nodes.
+        result_kept = False
+        for old_node in BP.find_nodes(graphs[name]):
+            kind = old_node.get_class().get_name()
+            if kind == "K2Node_FunctionEntry":
+                continue
+            if kind == "K2Node_FunctionResult" and not result_kept:
+                result_kept = True
+                for pin in BP.get_node_infos([old_node])[0].input_pins:
+                    for connected in pin.connected_pins:
+                        BP.break_pins(connected, pin.pin_id)
+                continue
+            BP.delete_node(old_node)
         unreal.log("WO_ACTION_BRIDGE_WRITE " + name)
         BP.write_graph_dsl(graphs[name], source)
     BP.compile_blueprint(bp, warnings_as_errors=True)
@@ -194,5 +230,5 @@ with toolset_registry.tool_raising_exceptions():
     assert unreal.EditorAssetLibrary.save_loaded_asset(bp)
     assert unreal.EditorAssetLibrary.save_loaded_asset(view)
     Path(unreal.Paths.project_saved_dir(), "WorkerOptimizer-ActionBridge.dsl").write_text("\n\n".join(code.values()), encoding="utf-8")
-unreal.log("WO_ACTION_BRIDGE_GENERATED: native references and structural safety gates; controller eligibility and in-game validation still required")
+unreal.log("WO_ACTION_BRIDGE_GENERATED: native admission, structural safety gates and immediate slot confirmation; shipping-game validation still required")
 exec(Path(__file__).with_name("test_action_bridge.py").read_text(encoding="utf-8"))

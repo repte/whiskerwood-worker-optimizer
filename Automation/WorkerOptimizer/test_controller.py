@@ -264,11 +264,7 @@ def run():
         assert str(runner.get_editor_property("FailureCode")) == "action_timeout"
         controller.call_method("SyncApplication")
         assert controller.get_editor_property("RunActive"), "A timed-out action must allow bounded automatic recovery without another click"
-        assert controller.get_editor_property("ReplanCount") == 0, "Never reset a snapshot under a pending command"
-        assert runner.get_editor_property("Waiting")
-        assert not controller.call_method("BeginRun")
-        observe_action(True)
-        controller.call_method("SyncApplication")
+        assert not runner.get_editor_property("Waiting"), "Returned native calls cannot retain a pending lock"
         assert controller.get_editor_property("Phase") == 1
         assert controller.get_editor_property("ReplanCount") == 1
         reach()
@@ -281,44 +277,31 @@ def run():
         assert not bridge.call_method("QueueAction", args=(None, 0, 0, 0, False))
         assert not controller.call_method("FailureRecoverable", args=("action_rejected",)), "A missing snapshot is not a recoverable drift"
 
-        for trigger, drift in (("manual", False), ("day_start", True)):
+        for trigger in ("manual",):
             restore_fixtures()
             records = controller.get_editor_property("CompletedRecordCount")
             assert controller.call_method("BeginTriggeredRun", args=(trigger,))
-            reach(6)
-            observe_action(False)
-            if drift:
-                runner.call_method("FailApplication", args=("world_changed",))
-            deadline = runner.get_editor_property("Deadline")
-            now = deadline + 9.9
-            controller.call_method("AdvanceRun", args=(now,))
-            assert controller.get_editor_property("RunActive"), "The bounded receipt grace period should remain available"
-            queued = runner.get_editor_property("QueuedCount")
-            now = deadline + 10.1
-            controller.call_method("AdvanceRun", args=(now,))
-            assert controller.get_editor_property("RunDone") and not controller.get_editor_property("RunActive"), "Missing receipt must not leave the request running indefinitely"
+            for attempt in range(3):
+                reach(6)
+                observe_action(False)
+                now = runner.get_editor_property("Deadline") + 0.1
+                assert not runner.call_method("ObserveAction", args=(None, now))
+                controller.call_method("SyncApplication")
+                assert not runner.get_editor_property("Waiting")
+                assert controller.get_editor_property("ReplanCount") == min(attempt + 1, 2)
+            assert controller.get_editor_property("RunDone") and not controller.get_editor_property("RunActive")
             assert not controller.get_editor_property("RunSucceeded")
             assert str(controller.get_editor_property("FailureCode")) == "action_timeout"
-            assert runner.get_editor_property("Waiting"), "A deadline cannot prove that a native command was cancelled"
-            assert not controller.get_editor_property("ReportPending"), "Uncertain failure must publish a terminal report without waiting forever"
-            report = controller.get_editor_property("CompletedReport")
+            report = finish_report()
             assert report.get_editor_property("ReportDone")
-            assert not report.get_editor_property("ConfirmationWindowKnown")
             assert str(report.get_editor_property("Outcome")) == "failed"
             assert str(report.get_editor_property("Failure")) == "action_timeout"
             assert report.get_editor_property("ConfirmedChanges") == 0
             assert controller.get_editor_property("CompletedRecordCount") == records + 1
-            for _ in range(3):
-                now += 1.0
-                controller.call_method("AdvanceRun", args=(now,))
-                assert not controller.call_method("BeginRun")
-            assert runner.get_editor_property("QueuedCount") == queued, "Never resend an unresolved command"
-            observe_action(True)
-            controller.call_method("AdvanceRun", args=(now,))
             assert not parts["AutoAssignment"].get_editor_property("Running")
-            assert controller.get_editor_property("CompletedRecordCount") == records + 1
-            assert report.get_editor_property("ConfirmedChanges") == 0, "A late receipt must not rewrite an already published record"
-            assert controller.get_editor_property("ReplanCount") == 0, "Terminal requests never resume a stale queue"
+            assert controller.call_method("BeginRun"), "Terminal failure must allow the next manual click"
+            controller.call_method("CancelRun")
+            finish_report()
         for phase in range(7):
             assert controller.call_method("BeginRun")
             reach(phase)
@@ -337,15 +320,12 @@ def run():
         observe_action(False)
         assert controller.call_method("CancelRun")
         assert controller.get_editor_property("ReportPending")
-        assert not controller.get_editor_property("CurrentReport").get_editor_property("FinishStarted"), "Late native confirmation remains part of the one terminal record"
-        assert parts["AutoAssignment"].get_editor_property("Running"), "Unresolved cancelled native command remains scheduler-busy"
-        assert not controller.call_method("BeginRun"), "An unresolved native command blocks a second run"
-        observe_action(True)
+        assert not runner.get_editor_property("Waiting")
+        assert not parts["AutoAssignment"].get_editor_property("Running")
         controller.call_method("AdvanceRun", args=(now,))
-        assert not parts["AutoAssignment"].get_editor_property("Running"), "Late confirmation ends the busy period before restarting its deadline"
-        assert not controller.get_editor_property("RunSucceeded") and controller.get_editor_property("AppliedCount") == 1
+        assert not controller.get_editor_property("RunSucceeded") and controller.get_editor_property("AppliedCount") == 0
         late_report = finish_report()
-        assert late_report.get_editor_property("ConfirmedChanges") == 1
+        assert late_report.get_editor_property("ConfirmedChanges") == 0
         assert str(late_report.get_editor_property("Outcome")) == "cancelled"
         assert controller.call_method("BeginRun")
         record_count = controller.get_editor_property("CompletedRecordCount")
@@ -368,18 +348,22 @@ def run():
         restore_fixtures()
         assert controller.call_method("BeginRun")
         reach(6)
+        for _ in range(2):
+            assert controller.call_method("RestartPlan")
+            reach(6)
         observe_action(False)
         deadline = runner.get_editor_property("Deadline")
         snapshot.call_method("ResetSnapshot")
+        assert controller.get_editor_property("ReplanCount") == 2
         now = deadline + 10.1
         controller.call_method("AdvanceRun", args=(now,))
         assert runner.get_editor_property("LastTime") < now, "Fixture must exercise the early return before observation updates the runner clock"
         assert controller.get_editor_property("RunDone") and not controller.get_editor_property("RunActive")
-        assert str(controller.get_editor_property("FailureCode")) == "action_timeout"
-        assert not controller.get_editor_property("ReportPending")
-        assert runner.get_editor_property("Waiting") and not controller.call_method("BeginRun"), "Missing receipt data cannot justify clearing an unresolved command"
+        assert str(controller.get_editor_property("FailureCode")) == "world_changed"
+        finish_report()
+        assert not runner.get_editor_property("Waiting") and controller.call_method("BeginRun"), "Missing observation data must not permanently lock manual assignment"
         controller.call_method("Shutdown")
-        unreal.log("WO_CONTROLLER_TESTS_PASS: real capture/layout/search/validation/application pipeline, food/logging shortage plus one free builder, paused-worker preservation, three confirmed hires then no-op, phase cancellation/reuse, unresolved-command restart lock, late confirmation and shutdown; native data/dispatch success supplied at explicit observation boundaries")
+        unreal.log("WO_CONTROLLER_TESTS_PASS: real capture/layout/search/validation/application pipeline, shortage plus one free builder, paused-worker preservation, three confirmed hires then no-op, bounded recovery and terminal reuse; native data/dispatch success supplied at explicit observation boundaries")
     finally:
         for actor in reversed(spawned):
             actors.destroy_actor(actor)

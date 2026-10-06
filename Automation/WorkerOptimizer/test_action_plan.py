@@ -87,6 +87,13 @@ def run():
             assert runner.call_method("RecordDispatch", args=(True, float(index)))
             wf = components[building_index].get_editor_property("m_workers")
             slots = list(wf.get_editor_property("m_workerSlots"))
+            if fire and slots[slot_index].get_editor_property("bIsRequiredToRun"):
+                # Native FIRE_WORKER also releases all optional incumbents.
+                # The production queue must have accounted for each one first.
+                for optional in slots:
+                    if not optional.get_editor_property("bIsRequiredToRun"):
+                        occupant = optional.get_editor_property("Agent")
+                        assert occupant is None, "Required fire would cause an untracked native dismissal"
             put(slots[slot_index], "Agent", None if fire else workers[worker_index])
             put(wf, "m_workerSlots", slots)
             put(components[building_index], "m_workers", wf)
@@ -111,9 +118,10 @@ def run():
         capture([a, b], workers, [a, a, b, None])
         before = [c.get_editor_property("m_workers").export_text() for c in (ac, bc)]
         assert build([0, 1, 2]) == [], "Already optimal assignments are no-ops"
-        assert build([2, 1, 0]) == [(1, 0, 2, True), (0, 0, 0, True), (0, 0, 2, False), (1, 0, 0, False)]
-        assert build([3, 2, 1]) == [(1, 0, 2, True), (0, 1, 1, True), (0, 0, 0, True),
-                                   (0, 0, 3, False), (1, 0, 1, False), (0, 1, 2, False)]
+        assert build([2, 1, 0]) == [(0, 1, 1, True), (0, 0, 0, True), (1, 0, 2, True),
+                                   (0, 0, 2, False), (1, 0, 0, False), (0, 1, 1, False)]
+        assert build([3, 2, 1]) == [(0, 1, 1, True), (0, 0, 0, True), (0, 0, 3, False),
+                                   (1, 0, 2, True), (1, 0, 1, False), (0, 1, 2, False)]
         assert before == [c.get_editor_property("m_workers").export_text() for c in (ac, bc)], "Queue construction must be read-only"
         for invalid in ([0, 0, 2], [0, 1], [0, 1, 2, 3], [4, 1, 2], [-3, 1, 2], [-2, 1, 2], [-1, 1, 2]):
             build(invalid, False)
@@ -136,7 +144,7 @@ def run():
         assert build([0, -2, 1]) == []
         build([0, -1, 1], False)
         build([0, 2, 1], False)
-        assert build([2, -2, 1]) == [(0, 0, 0, True), (0, 0, 2, False)]
+        build([2, -2, 1], False)
 
         # Unavoidable partial crews must preserve locked occupants without blocking
         # optimization elsewhere. Movable workers must not be stranded beside them.
@@ -200,7 +208,7 @@ def run():
         capture([school], workers, [school, school, None, None])
         make_layout()
         assert list(layout.get_editor_property("SchoolBuildings")) == [True]
-        assert build([2, 1]) == [(0, 0, 0, True), (0, 0, 2, False)], "An unchanged student stays assigned during a compatible teacher change"
+        assert build([2, 1]) == [(0, 1, 1, True), (0, 0, 0, True), (0, 0, 2, False), (0, 1, 1, False)], "A movable student must be restored after the native teacher dismissal"
         ch = workers[2].get_editor_property("m_characteristics")
         assert ch.import_text('(guild="guild1")')
         put(workers[2], "m_characteristics", ch)
@@ -223,7 +231,7 @@ def run():
         put(sc, "m_workers", school_wf)
         capture([school], [workers[0], workers[2], workers[3]], [school, None, None])
         build([1, -2], False)
-        assert build([2, -2]) == [(0, 0, 0, True), (0, 0, 2, False)]
+        build([2, -2], False)
 
         # Duplicate current occupancy invalidates the input, even for preserved slots.
         invalid, _ = building(1303, "Industry", [workers[3], workers[3]], [True, False])

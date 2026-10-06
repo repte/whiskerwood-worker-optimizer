@@ -8,6 +8,7 @@ from editor_toolset.toolsets.blueprint import BlueprintTools as BP
 from editor_toolset.toolsets import blueprint_dsl
 
 ROOT = "/Game/Mods/WorkerOptimizer"
+MANUAL_ONLY = True
 load = lambda name: unreal.load_class(None, ROOT + "/" + name + "." + name + "_C")
 api_class = unreal.load_class(None, "/Script/SystemCore.ModAPI")
 bp = unreal.load_asset(ROOT + "/BP_MapLoad")
@@ -335,6 +336,32 @@ code["Shutdown"] = f"""(fn Shutdown ()
     (if (and {g('Bound')} {present(g('API'))}) (CallFunction|UnbindLoading) (CallFunction|UnbindDay))
     {put('Bound', 'false')} {put('Primary', 'false')}
     (CallFunction|ReleaseSession) (Variables|Default|SetAPI) (return true))"""
+if MANUAL_ONLY:
+    code["AttachAPI"] = code["AttachAPI"].replace(" (CallFunction|BindDay)", "")
+    code["OnDayStart"] = "(fn OnDayStart (day) (return))"
+    code["PollAutomatic"] = "(fn PollAutomatic () (return false))"
+    code["PumpLifecycle"] = code["PumpLifecycle"].replace("(CallFunction|PollAutomatic)", "")
+    code["PumpUI"] = f"""(fn PumpUI ()
+        (if (or {g('ShuttingDown')} (not {g('Ready')})) (return false))
+        (bind available {present(g('UI'))}) (return available))"""
+
+
+def clear_generated_body(graph):
+    # Preserve signatures while discarding the old parameter-connected body.
+    result_kept = False
+    for node in BP.find_nodes(graph):
+        kind = node.get_class().get_name()
+        if kind == "K2Node_FunctionEntry":
+            continue
+        if kind == "K2Node_FunctionResult" and not result_kept:
+            result_kept = True
+            for pin in BP.get_node_infos([node])[0].input_pins:
+                for connected in pin.connected_pins:
+                    BP.break_pins(connected, pin.pin_id)
+            continue
+        BP.delete_node(node)
+
+
 for source in code.values():
     blueprint_dsl.parse(source)
 with toolset_registry.tool_raising_exceptions():
@@ -342,6 +369,7 @@ with toolset_registry.tool_raising_exceptions():
         if name in ("BindLoading", "UnbindLoading", "BindDay", "UnbindDay"):
             continue
         unreal.log("WO_LIFECYCLE_WRITE " + name)
+        clear_generated_body(graphs[name])
         BP.write_graph_dsl(graphs[name], source)
         if name == "PumpLifecycle":
             # The DSL caches wildcard pin types. Set the enum constant only after
@@ -356,6 +384,7 @@ with toolset_registry.tool_raising_exceptions():
                                 ("BindDay", "EventDispatchers|BindEventtoOnDayStart"),
                                 ("UnbindDay", "EventDispatchers|UnbindEventfromOnDayStart")):
         graph = graphs[function]
+        clear_generated_body(graph)
         # The regular writer compiles immediately. Wire the required delegate first.
         blueprint_dsl.Transpiler(
             graph, BP.create_node, BP.connect_pins, BP._get_node_info,

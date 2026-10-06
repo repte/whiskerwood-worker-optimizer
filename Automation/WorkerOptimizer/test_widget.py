@@ -48,8 +48,7 @@ def run():
         assert config.call_method("ApplyChord", args=(config.call_method("ExportChord"),))
         assert not config.call_method("SaveSettings", args=("invalid-slot",))
         assert widget.call_method("RefreshUI")
-        assert settings.get_editor_property("background_color").export_text() != normal_settings
-        assert "not saved" in str(settings.get_editor_property("tool_tip_text")).lower()
+        assert settings.get_visibility() == unreal.SlateVisibility.COLLAPSED
         assert config.get_editor_property("Dirty")
         config.call_method("ResetDefaults")
         assert widget.call_method("RefreshUI")
@@ -57,36 +56,35 @@ def run():
         assert "not saved" not in str(settings.get_editor_property("tool_tip_text")).lower()
         assert not config.call_method("LoadSettings", args=("invalid-slot",))
         assert widget.call_method("RefreshUI")
-        assert "default" in str(settings.get_editor_property("tool_tip_text")).lower()
+        assert settings.get_visibility() == unreal.SlateVisibility.COLLAPSED
         config.call_method("ResetDefaults")
         invalid_chord = unreal.InputChord()
         assert invalid_chord.import_text("(Key=Escape)")
         assert not widget.call_method("KeyChanged", args=(invalid_chord,))
-        assert "invalid" in str(settings.get_editor_property("tool_tip_text")).lower()
+        assert not config.get_editor_property("Dirty")
         config.call_method("ResetDefaults")
         assert widget.call_method("RefreshUI")
-        assert widget.call_method("ToggleButton")
-        assert not widget.get_editor_property("ButtonVisible")
-        assert widget.get_editor_property("Controls").get_visibility() == unreal.SlateVisibility.COLLAPSED
+        assert not widget.call_method("ToggleButton")
+        assert widget.get_editor_property("ButtonVisible")
+        assert widget.get_editor_property("Controls").get_visibility() == unreal.SlateVisibility.SELF_HIT_TEST_INVISIBLE
         assert not controller.get_editor_property("RunActive"), "Visibility is never an optimization trigger"
-        assert widget.call_method("ToggleButton")
+        assert not widget.call_method("ToggleButton")
         # Explicit UI fixtures do not initialize or run the optimizer.
         from ui_test_fixture import inputs
         inputs.call_method("Controller", args=(controller,))
-        assert widget.call_method("ToggleSettings")
-        assert widget.get_editor_property("SettingsOpen")
-        assert widget.get_editor_property('GeometryWatching'), 'Opening starts the bounded geometry observer'
-        assert widget.get_editor_property("PanelHost").get_visibility() == unreal.SlateVisibility.VISIBLE
-        assert str(widget.get_editor_property("PanelHost").get_editor_property("ActiveTab")) == "general"
-        assert widget.call_method("OpenLogbook")
-        assert str(widget.get_editor_property("PanelHost").get_editor_property("ActiveTab")) == "logbook"
-        assert widget.call_method("ToggleButton")
+        assert not widget.call_method("ToggleSettings")
+        assert not widget.get_editor_property("SettingsOpen")
+        assert not widget.get_editor_property('GeometryWatching')
+        assert widget.get_editor_property("PanelHost").get_visibility() == unreal.SlateVisibility.COLLAPSED
+        assert not widget.get_editor_property("PanelHost").get_editor_property("Initialized")
+        assert not widget.call_method("OpenLogbook")
+        assert not widget.call_method("ToggleButton")
         assert not widget.get_editor_property("SettingsOpen"), "Hiding closes the key capture panel"
         assert not widget.get_editor_property('GeometryWatching'), 'Closed UI must not retain its geometry observer'
         writes=widget.get_editor_property('UIWriteCount')
         widget.call_method('OnGeometryPulse')
         assert widget.get_editor_property('UIWriteCount')==writes, 'A stale completion callback must be inert after closing'
-        assert widget.call_method("ToggleButton")
+        assert not widget.call_method("ToggleButton")
         assert not widget.call_method("ClickAction"), "Controller not initialized yet"
         view = unreal.new_object(load("WBP_ActionContext"))
         assert bridge.call_method("InitializeBridge", args=(view,))
@@ -108,7 +106,7 @@ def run():
         busy_color = widget.get_editor_property("ActionButton").get_editor_property("background_color").export_text()
         unreal.log("WO_WIDGET_COLORS " + idle_color + " -> " + busy_color)
         assert widget.get_editor_property('ActionButtonIcon').get_visibility() == unreal.SlateVisibility.HIDDEN
-        assert widget.get_editor_property('BusyText').get_visibility() == unreal.SlateVisibility.HIT_TEST_INVISIBLE, 'Busy must be visible without hovering or relying only on color'
+        assert widget.get_editor_property('BusyText').get_visibility() == unreal.SlateVisibility.COLLAPSED, 'Manual mode keeps feedback within the assignment icon'
         assert not widget.get_editor_property("ActionButton").get_is_enabled(), "Active manual assignment must disable the assignment icon"
         assert widget.get_editor_property("BusyIndicator").get_visibility() == unreal.SlateVisibility.HIT_TEST_INVISIBLE
         assert "cancel" not in str(widget.get_editor_property("ActionButton").get_editor_property("tool_tip_text")).lower()
@@ -116,9 +114,9 @@ def run():
         widget.get_editor_property("ActionButton").on_clicked.broadcast()
         assert controller.get_editor_property("RunActive"), "Repeated button events must leave active work untouched"
         assert str(controller.get_editor_property("FailureCode")) != "cancelled"
-        assert widget.call_method("ToggleSettings"), "Busy assignment must not lock settings access"
-        assert widget.call_method("OpenLogbook"), "Busy assignment must not lock history access"
-        assert widget.call_method("ToggleButton") and widget.call_method("ToggleButton")
+        assert not widget.call_method("ToggleSettings"), "Settings access remains dormant"
+        assert not widget.call_method("OpenLogbook"), "History access remains dormant"
+        assert not widget.call_method("ToggleButton")
         assert controller.get_editor_property("RunActive"), "Hide/show must not affect active work"
         # Internal lifecycle cancellation remains available; there is no user cancel route.
         assert controller.call_method("CancelRun")
@@ -142,7 +140,7 @@ def run():
             auto_widget.call_method('ShutdownUI')
             auto_widget.remove_from_parent()
             auto_controller.call_method("Shutdown")
-        # A terminal failure can still have a native command and report outstanding.
+        # A returned native failure must release admission once its report finishes.
         native = lambda name: unreal.load_class(None, "/Script/ProjectArco." + name)
         put = lambda obj, name, value: obj.set_editor_property(name, value, notify_mode=unreal.PropertyAccessChangeNotifyMode.NEVER)
         worker = actors.spawn_actor_from_class(native("Prototype_Agent"), unreal.Vector(0, 0, -100000))
@@ -189,10 +187,11 @@ def run():
         assert str(runner.get_editor_property("FailureCode")) == "action_timeout"
         assert not controller.call_method("FailRun", args=("action_timeout",))
         assert controller.get_editor_property("RunDone") and not controller.get_editor_property("RunActive")
-        assert not controller.get_editor_property("ReportPending"), "Unresolved terminal timeout must publish its failure without waiting for native confirmation"
-        assert runner.get_editor_property("Waiting")
+        assert not runner.get_editor_property("Waiting")
+        finish_report()
+        assert not controller.get_editor_property("ReportPending")
         assert widget.call_method("RefreshUI")
-        assert widget.get_editor_property("BusyIndicator").get_visibility() == unreal.SlateVisibility.COLLAPSED, "Terminal timeout must replace the spinner even while native confirmation is pending"
+        assert widget.get_editor_property("BusyIndicator").get_visibility() == unreal.SlateVisibility.COLLAPSED, "A completed failure must replace the spinner"
         assert widget.get_editor_property("BusyText").get_visibility() == unreal.SlateVisibility.COLLAPSED
         assert widget.get_editor_property("ActionButtonIcon").get_visibility() == unreal.SlateVisibility.HIT_TEST_INVISIBLE
         outcome = widget.get_editor_property("OutcomeIcon")
@@ -201,18 +200,16 @@ def run():
         expected_failure = widget.call_method("UIString", args=("failed",))
         actual_tooltip = str(widget.get_editor_property("ActionButton").get_editor_property("tool_tip_text"))
         assert actual_tooltip == expected_failure, ("Timeout must use the existing localized failure message", actual_tooltip, expected_failure)
-        assert not widget.get_editor_property("ActionButton").get_is_enabled(), "Pending native result must visibly block a new run"
-        assert not widget.call_method("ClickAction")
-        widget.get_editor_property("ActionButton").on_clicked.broadcast()
-        assert not controller.get_editor_property("RunActive") and runner.get_editor_property("Waiting")
-        assert str(controller.get_editor_property("FailureCode")) == "action_timeout", "Clicks must not cancel or replace a terminal failure"
+        assert widget.get_editor_property("ActionButton").get_is_enabled(), "A returned native failure must not permanently block a new run"
+        assert not controller.get_editor_property("RunActive")
         writes = widget.get_editor_property("UIWriteCount")
         assert widget.call_method("RefreshUI")
         assert widget.get_editor_property("UIWriteCount") == writes, "Stable terminal failure must not repaint"
         put(slots[0], "Agent", None)
         put(wf, "m_workerSlots", slots)
         put(component, "m_workers", wf)
-        assert runner.call_method("ObserveAction", args=(None, 22.0))
+        assert not runner.call_method("ObserveAction", args=(None, 22.0))
+        assert runner.get_editor_property("AppliedCount") == 0, "Unrelated later changes are not late success"
         assert not runner.get_editor_property("Waiting")
         # Isolate the report-only admission gate with transient native UI inputs.
         report_fixture = BP.create("/Game/WorkerOptimizerEditorTests", "BP_WidgetReportInputs", unreal.Object.static_class())
@@ -234,6 +231,7 @@ def run():
         assert widget.get_editor_property("ActionButton").get_is_enabled(), "Completed report and native confirmation must re-enable assignment"
         assert widget.get_editor_property("BusyIndicator").get_visibility() == unreal.SlateVisibility.COLLAPSED
         assert str(widget.get_editor_property("ActionButton").get_editor_property("tool_tip_text")) == widget.call_method("UIString", args=("failed",))
+        assert widget.call_method("ClickAction") and controller.get_editor_property("RunActive"), "The same icon must start a fresh manual request after failure"
         assert widget.call_method("ShutdownUI")
         assert not widget.call_method("ClickAction")
         assert not widget.call_method("ToggleButton")
@@ -244,7 +242,7 @@ def run():
         actors.destroy_actor(bridge)
         for obj in extra_actors:
             actors.destroy_actor(obj)
-    unreal.log("WO_WIDGET_TESTS_PASS: native tree, guarded initialize, visibility-only toggle, manual/automatic busy lock, terminal timeout/late confirmation, no player cancel, settings/history access and shutdown")
+    unreal.log("WO_WIDGET_TESTS_PASS: single assignment icon, dormant feature access, guarded initialization, busy lock, terminal timeout/late confirmation and shutdown")
 
 
 run()

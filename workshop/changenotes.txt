@@ -1,10 +1,10 @@
-v0.2.1-hotfix.1 - Assignment recovery
-- Automatic recovery for delayed confirmations, for manual and scheduled runs.
-- Missing confirmation now produces a failed report instead of endless loading.
-- Pending commands are not resent. The button unlocks on confirmation or world reload.
-- Fixed state-check recovery and added clearer timeout diagnostics.
-- Priorities, builder reserve and processing budgets are unchanged.
+v0.3.0-preview - One-click worker assignment
+- One always-visible manual icon; settings, logbook access, hotkeys and schedules are disabled.
+- Minimum crews first, then best-fit extra workers. Old priorities are ignored; the saved builder reserve remains.
+- Corrected native job eligibility and required-worker changes that also dismiss optional staff.
+- Check actual assignment results immediately; failed requests no longer leave a permanent icon lock.
+- Previous settings, history and feature assets are retained.
 
-In-game acceptance is pending. Test in a separate save first.
+Preview: in-game validation is pending. Test on a separate save first.
 
 Documentation and source: https://github.com/repte/whiskerwood-worker-optimizer

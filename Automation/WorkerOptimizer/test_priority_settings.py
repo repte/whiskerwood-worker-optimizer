@@ -125,21 +125,21 @@ def policy_input_boundary():
         values("4", "1", "Strict", "7")
         assert call("CapturePolicy", settings)
         settings.set_editor_property("AutoValue", "WorkerOptimizer.ui.auto.minutes_5")
-        assert str(call("ReadAutoMode", settings)) == "minutes_5", "Auto mode remains live while policy is frozen"
+        assert str(call("ReadAutoMode", settings)) == "off", "Saved schedules remain dormant"
         settings.set_editor_property("AutoValue", "WorkerOptimizer.ui.auto.off")
         assert str(call("ReadAutoMode", settings)) == "off"
         values("0", "3", "Weighted", "100")
-        assert call("ReadPriority", settings, "Food", "fishery") == 1
-        assert call("ReadPriority", settings, "Food", "new_type") == 4
+        assert call("ReadPriority", settings, "Food", "fishery") == 2
+        assert call("ReadPriority", settings, "Food", "new_type") == 2
         assert call("ReadStrictMode", settings) and call("ReadReserve", settings) == 7
         assert call("AddPolicyKey", "new_type", "Food")
-        assert call("ReadPriority", settings, "Food", "new_type") == 4
+        assert call("ReadPriority", settings, "Food", "new_type") == 2
         assert call("ReleasePolicy")
-        assert call("ReadPriority", settings, "Food", "fishery") == 3
-        assert not call("ReadStrictMode", settings) and call("ReadReserve", settings) == 100
+        assert call("ReadPriority", settings, "Food", "fishery") == 2
+        assert call("ReadStrictMode", settings) and call("ReadReserve", settings) == 100
         assert call("CapturePolicy", settings)
-        assert call("ReadPriority", settings, "Food", "new_type") == 0
-        assert call("ReadPriority", settings, "Food", "fishery") == 3
+        assert call("ReadPriority", settings, "Food", "new_type") == 2
+        assert call("ReadPriority", settings, "Food", "fishery") == 2
         assert call("ReleasePolicy")
         assert call("CapturePolicy", settings) and call("ReleasePolicy")
         actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
@@ -169,20 +169,20 @@ def policy_input_boundary():
             values("4", "1", "Strict", "7")
             assert controller.call_method("BeginRun")
             values("0", "3", "Weighted", "100")
-            assert call("ReadPriority", controller, "Food", "fishery") == 1, "Accepted run must freeze type before its first advance"
-            assert call("ReadPriority", controller, "Food", "new_type") == 4, "Accepted run must freeze category before its first advance"
+            assert call("ReadPriority", controller, "Food", "fishery") == 2, "Saved type priorities remain dormant"
+            assert call("ReadPriority", controller, "Food", "new_type") == 2, "All active buildings have equal priority"
             assert call("ReadStrictMode", controller) and call("ReadReserve", controller) == 7
             scorer = controller.get_editor_property("Scorer")
             assert scorer.call_method("Configure", args=(25.0, -10.0, 20.0, 15.0, 10.0))
             assert controller.call_method("AcceptConfig", args=(True,))
             assert controller.get_editor_property("RequestedReserve") == 7
-            assert call("ReadPriority", controller, "Food", "new_type") == 4
+            assert call("ReadPriority", controller, "Food", "new_type") == 2
             assert controller.call_method("CancelRun") and not settings.get_editor_property("PolicyFrozen")
             finish_report()
             assert controller.call_method("BeginRun")
-            assert call("ReadPriority", controller, "Food", "fishery") == 3
-            assert call("ReadPriority", controller, "Food", "new_type") == 0
-            assert not call("ReadStrictMode", controller) and call("ReadReserve", controller) == 100
+            assert call("ReadPriority", controller, "Food", "fishery") == 2
+            assert call("ReadPriority", controller, "Food", "new_type") == 2
+            assert call("ReadStrictMode", controller) and call("ReadReserve", controller) == 100
             assert controller.call_method("CancelRun")
             finish_report()
             # A refused capture must not expose an accepted run or retain a lock.
@@ -190,7 +190,7 @@ def policy_input_boundary():
             assert not controller.call_method("BeginRun")
             assert not controller.get_editor_property("RunActive") and not settings.get_editor_property("PolicyFrozen")
             assert controller.call_method("BeginRun") and controller.call_method("CancelRun")
-            unreal.log("WO_CONTROLLER_ADMISSION_POLICY_TESTS_PASS: category/type/mode/reserve frozen before first advance, next run recaptures and failed capture releases admission lock")
+            unreal.log("WO_CONTROLLER_ADMISSION_POLICY_TESTS_PASS: equal priorities, dormant saved mode, reserve frozen before first advance, next run recaptures and failed capture releases admission lock")
         finally:
             controller.call_method("Shutdown")
             actors.destroy_actor(bridge)
@@ -198,7 +198,7 @@ def policy_input_boundary():
             scorer = controller = bridge = actors = load = controller_graph = controller_bp = None
             unreal.SystemLibrary.collect_garbage()
             assert unreal.EditorAssetLibrary.delete_asset(controller_path)
-        unreal.log("WO_POLICY_INPUT_BOUNDARY_TESTS_PASS: frozen category/type/mode/reserve, newly discovered type, release and recapture; native OptionManager integration not executed")
+        unreal.log("WO_POLICY_INPUT_BOUNDARY_TESTS_PASS: dormant saved priorities/mode/schedule, preserved reserve, newly discovered type, release and recapture; native OptionManager integration not executed")
     finally:
         # Release Python wrappers before unloading the temporary child package.
         call = values = settings = graph = bp = parent = None

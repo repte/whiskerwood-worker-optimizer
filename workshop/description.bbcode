@@ -1,31 +1,34 @@
 [h1]Worker Optimizer[/h1]
-[b]Auto-assign workers to suitable jobs with one click, or let a schedule handle it.[/b]
+[b]Auto-assign workers to suitable jobs with one click.[/b]
 
-Match your residents' specialties to your settlement's needs, respect your priorities and keep enough workers available for construction.
+Match your residents' specialties to your settlement's needs, cover minimum operating crews first and keep the saved reserve free for construction.
+
+[h2]v0.3.0-preview[/h2]
+[b]In-game validation is pending.[/b] Includes corrected job eligibility, worker-change ordering and recovery without permanently locking the icon. Test on a separate save first.
 
 [h2]Features[/h2]
 [list]
+[*][b]One manual icon:[/b] always visible; click to request assignment. No settings gear, logbook view or visibility shortcut.
 [*][b]Smart assignment:[/b] considers worker specialties, productivity and job requirements.
-[*][b]Coverage first:[/b] prioritize minimum operating crews before filling extra workplaces.
-[*][b]Your priorities:[/b] searchable building categories and individual building-type overrides.
-[*][b]Builder reserve:[/b] choose how many eligible residents remain unassigned.
-[*][b]Optional automation:[/b] run at day start or every 5, 10 or 15 real-time minutes.
-[*][b]Clear logbook:[/b] timestamps, color-coded results, confirmed changes and reasons for unfilled workplaces.
-[*][b]Responsive interface:[/b] General, Priorities and Logbook, supporting all 17 game languages.
+[*][b]Coverage first:[/b] select feasible minimum crews before filling extra workplaces by suitability.
+[*][b]Equal priority:[/b] all active supported buildings use the same priority; older priority overrides and strict/weighted mode choices are ignored.
+[*][b]Saved builder reserve:[/b] respect the previously saved number of eligible residents to keep free, or 1 by default. This preview has no reserve editor.
+[*][b]Manual only:[/b] automatic schedules are disabled, including those saved by earlier releases.
+[*][b]Targeted moves:[/b] safely account for the optional workers affected by replacing a required worker.
 [/list]
 
+Earlier settings and history are retained, but cannot be edited in this preview.
+
 [h2]Getting started[/h2]
-[b]Recommended timing:[/b] For best results, run worker assignment calculations at night or just after a new day starts. Running them during the day may cause assignment errors.
+[b]Recommended timing:[/b] For the first test, run assignment at night or just after a new day starts. Daytime behavior still needs separate validation.
 
-Subscribe, wait for Steam to download the mod and restart the game. Remove any separate local installation to avoid duplicates.
+Subscribe and restart after Steam downloads the update. Use either Workshop or a local installation, never both.
 
-Click the assignment icon at the lower left to run. Open the gear for settings. [b]Ctrl + Alt + O[/b] shows or hides the controls.
+Click the lower-left assignment icon. Check results in the game's building and resident windows.
 
-Automatic assignment is off by default. Minute timers include pauses; assignments wait until the simulation resumes. The start button stays locked while a request is active. Extra clicks do not restart or cancel it.
+The icon stays busy until the run ends. Extra clicks do not cancel or restart it. Only observed changes count; confirmed changes are not automatically rolled back.
 
 [b]Please note:[/b] paused and unsupported buildings retain their workers. The builder reserve and job requirements remain binding, so shortages can still leave buildings unstaffed. Keep a backup save.
-
-[b]v0.2.1-hotfix.1:[/b] delayed confirmations can now recover automatically. If confirmation remains missing, the run shows a failed report instead of endless loading. The button stays locked until the outstanding command is confirmed or the world is reloaded; commands are never blindly resent. In-game acceptance of this hotfix is pending. Try a separate test save first.
 
 [h2]Source, documentation and feedback[/h2]
 [url=https://github.com/repte/whiskerwood-worker-optimizer]https://github.com/repte/whiskerwood-worker-optimizer[/url]

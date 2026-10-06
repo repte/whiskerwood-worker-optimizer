@@ -41,9 +41,9 @@ def run():
         for _ in range(3):
             assert session.call_method("PumpUI")
             assert not controller.get_editor_property("RunActive"), "Polling cannot start optimization"
-        assert widget.call_method("ToggleButton")
+        assert not widget.call_method("ToggleButton")
         assert session.call_method("PumpUI")
-        assert not widget.get_editor_property("ButtonVisible"), "Polling must continue while controls are hidden"
+        assert widget.get_editor_property("ButtonVisible"), "Dormant hotkeys cannot hide the only manual control"
         tick = unreal.get_default_object(load("BP_MapLoad")).get_editor_property("primary_actor_tick")
         assert tick.get_editor_property("start_with_tick_enabled")
         assert tick.get_editor_property("tick_even_when_paused")
@@ -59,7 +59,7 @@ def run():
         for obj in reversed(spawned):
             if unreal.SystemLibrary.is_valid(obj):
                 actors.destroy_actor(obj)
-    unreal.log("WO_UI_LIFECYCLE_TESTS_PASS: guarded session UI, no autorun, repeated polls, hidden polling, pause-enabled tick, teardown")
+    unreal.log("WO_UI_LIFECYCLE_TESTS_PASS: guarded session UI, manual-only access, repeated polls, persistent icon, pause-enabled tick, teardown")
 
 
 run()

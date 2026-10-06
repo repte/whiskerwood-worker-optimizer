@@ -197,13 +197,14 @@ def run():
         assert not begin([0]), "A protected teacher cannot be replaced"
         fixed_student, _ = building(2203, "School", [workers[0], workers[3]])
         capture([fixed_student], workers[:3], [fixed_student, None, None])
-        assert begin([1])
+        assert not begin([1]), "Replacing a required teacher would fire the protected student"
+        assert begin([0])
         define(["education"])
-        assert finish() == [-1, 0, -1, -1, -1, -1, -1, 100]
-        assert list(matrix.get_editor_property("FixedSlots")) == [1, 3], "A protected student requires its selected teacher to remain assigned"
-        assert list(layout.get_editor_property("FixedSlots")) == [-1, 3]
+        assert finish() == [0, -1, -1, -1, -1, -1, -1, 100]
+        assert list(matrix.get_editor_property("FixedSlots")) == [0, 3], "A protected student requires its existing teacher to remain assigned"
+        assert list(layout.get_editor_property("FixedSlots")) == [0, 3]
         # A higher-priority production row cannot steal this teacher afterward.
-        planner.call_method("StartPlan", args=(list(matrix.get_editor_property("Scores")) + [-1.0, 999.0, -1.0, -1.0],
+        planner.call_method("StartPlan", args=(list(matrix.get_editor_property("Scores")) + [999.0, -1.0, -1.0, -1.0],
             [0, 0, 1], [True, True, True], [0, 4], 4, True))
         assert planner.call_method("RequireFixedSlots", args=(list(matrix.get_editor_property("FixedSlots")) + [-1],))[-1]
         for _ in range(1000):
@@ -211,15 +212,14 @@ def run():
                 break
             planner.call_method("AdvancePlan")
         assert planner.get_editor_property("PlanSucceeded")
-        assert list(planner.get_editor_property("PlanAssignment")) == [1, 3, -1]
-        changed_ch = workers[1].get_editor_property("m_characteristics")
+        assert list(planner.get_editor_property("PlanAssignment")) == [0, 3, -1]
+        changed_ch = workers[0].get_editor_property("m_characteristics")
         assert changed_ch.import_text('(guild="guild3")')
-        put(workers[1], "m_characteristics", changed_ch)
+        put(workers[0], "m_characteristics", changed_ch)
         capture([fixed_student], workers[:3], [fixed_student, None, None])
-        assert begin([1])
+        assert begin([0])
         define(["education"])
-        assert finish(False) == []
-        assert str(matrix.get_editor_property("FailureCode")) == "incompatible_fixed_student"
+        assert finish() == [0, -1, -1, -1, -1, -1, -1, 100], "Existing protected pupil is preserved after its teacher's guild changes"
         capture([], [], [])
         assert begin([])
         prepare()

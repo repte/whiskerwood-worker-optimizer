@@ -45,12 +45,6 @@ def run():
     settings = sources["settings_model"]
     assert "(if written {put('OptionRevision'" in settings
     assert "{notify}) (return written)" in settings
-    lifecycle = sources["lifecycle"]
-    start = lifecycle.index('code["PumpUI"]')
-    end = lifecycle.index('code["MeasureUI"]', start)
-    pump = lifecycle[start:end]
-    assert "RefreshUI" not in pump
-    assert "IsCapturing" in pump and "PollKey" in pump and "ToggleButton" in pump
     test_source = Path(__file__).read_text(encoding="utf-8")
     native_source = test_source[test_source.index("\ndef run_native():"):]
     assert "set_editor_property" not in native_source
@@ -114,7 +108,8 @@ def run_native():
             calls = [node for node in nodes if node.type_id.rsplit("|", 1)[-1].replace(" ", "") == "Call" + dispatchers[asset]]
             assert len(calls) == 1, (asset, function, [node.type_id for node in nodes])
     lifecycle = unreal.load_asset(root + "BP_MapLoad")
-    assert not any("RefreshUI" in node.type_id for node in BP.get_node_infos(BP.find_nodes(BP.get_graph(lifecycle, "PumpUI"))))
+    pump_calls = {node.type_id.rsplit("|", 1)[-1] for node in BP.get_node_infos(BP.find_nodes(BP.get_graph(lifecycle, "PumpUI")))}
+    assert not pump_calls & {"RefreshUI", "IsCapturing", "PollKey", "ToggleButton"}, "Manual UI stays event-driven without hotkey polling or icon hiding"
 
     actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     controller = actors.spawn_actor_from_class(load("BP_WorkerOptimizer"), unreal.Vector(0, 0, -100000))

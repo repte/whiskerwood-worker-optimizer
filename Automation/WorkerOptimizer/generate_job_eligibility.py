@@ -1,4 +1,4 @@
-"""Generate workplace role checks from the inspected native selector rules."""
+"""Generate native hire admission and the additional school learning rules."""
 
 from pathlib import Path
 
@@ -52,8 +52,6 @@ code["EligibleData"] = """(fn EligibleData (Education Requirement Student Teache
       (if (and (!= TeacherGuild "None") (== TeacherGuild WorkerGuild)) (return false))
       (if (== Requirement 0) (return true))
       (return (!= (Math|Integer|BitwiseAND Education Requirement) Requirement)))
-    (if (== Requirement 128) (return (== (Math|Integer|BitwiseAND Education 3) 1)))
-    (if (== Requirement 64) (return (== (Math|Integer|BitwiseAND Education 48) 16)))
     (return (== (Math|Integer|BitwiseAND Education Requirement) Requirement)))"""
 def normal(result):
     return f"""(bind {result} (CallFunction|EligibleData :Education education :Requirement requirement :Student false))
@@ -70,6 +68,8 @@ code["CanFillSlot"] = f"""(fn CanFillSlot (Worker Building SlotIndex PlannedTeac
         {unpack('AgentCharacteristics', '(Class|PrototypeAgent|GetMCharacteristics :self Worker)', 'ch')}
         (bind education (Math|Conversions|ToInteger(Byte) ch_education))
         (bind requirement (Math|Conversions|ToInteger(Byte) slot_educationRequirement))
+        (bind nativeAdmission (CallFunction|EligibleData :Education education :Requirement requirement :Student false))
+        (if (not nativeAdmission) (return false))
         (bind schoolComponent (Actor|GetComponentbyClass :self Building :ComponentClass "/Script/ProjectArco.School"))
         (bind school (Utilities|Casting|CastToSchool :Object schoolComponent)
           (:CastFailed {normal('ordinaryEligible')})
@@ -122,6 +122,19 @@ for source in code.values():
     blueprint_dsl.parse(source)
 with toolset_registry.tool_raising_exceptions():
     for name, source in code.items():
+        # Every rewritten body can retain stale parameter-linked nodes.
+        result_kept = False
+        for old_node in BP.find_nodes(graphs[name]):
+            kind = old_node.get_class().get_name()
+            if kind == "K2Node_FunctionEntry":
+                continue
+            if kind == "K2Node_FunctionResult" and not result_kept:
+                result_kept = True
+                for pin in BP.get_node_infos([old_node])[0].input_pins:
+                    for connected in pin.connected_pins:
+                        BP.break_pins(connected, pin.pin_id)
+                continue
+            BP.delete_node(old_node)
         unreal.log("WO_JOB_ELIGIBILITY_WRITE " + name)
         BP.write_graph_dsl(graphs[name], source)
     BP.compile_blueprint(bp, warnings_as_errors=True)

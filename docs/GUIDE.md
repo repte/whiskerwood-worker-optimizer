@@ -2,24 +2,23 @@
 
 [Back to README](../README.md)
 
-[Settings](#usage) · [Implementation](#how-it-works) · [Build](#building-and-testing) · [Testing and limits](#verification-and-known-limits) · [Troubleshooting](#reporting-problems)
+[Usage](#usage) · [Implementation](#how-it-works) · [Build](#building-and-testing) · [Testing and limits](#verification-and-known-limits) · [Troubleshooting](#reporting-problems)
 
-Assign residents to suitable workplaces with one click, while keeping a configurable number free for construction.
+Assign residents to suitable workplaces with one manual icon, while respecting the saved number to keep free for construction.
 
-Worker Optimizer matches residents to jobs using guild specialties, productivity and job eligibility. It selects feasible minimum operating crews in priority order before filling additional positions, with category priorities and building-type overrides to control where workers are needed most.
+Worker Optimizer matches residents to jobs using guild specialties, productivity and job eligibility. It selects feasible minimum operating crews before filling additional positions by suitability. Active supported workplaces have equal priority in this preview.
 
-**Version scope:** the stable release is **v0.2.0**, available on GitHub and Steam Workshop. Differences in the **v0.2.1-hotfix.1** pre-release are marked below; its in-game acceptance and Workshop submission are pending.
+**Version scope:** this guide describes **v0.3.0-preview**. The user will perform the in-game test; acceptance is pending. GitHub publication and preparing Workshop files are separate from submitting an update to Steam. Historical validation for earlier releases does not validate this preview.
 
 ## Features
 
 - A small action button in the lower-left corner of the game.
-- Responsive General, Priorities and Logbook tabs, opened from the settings gear or logbook button.
-- A rebindable visibility shortcut, defaulting to **Ctrl + Alt + O**.
-- One reassignment run per click, plus optional scheduling at day start or every 5, 10 or 15 real-time minutes; automatic assignment is off by default.
-- A configurable reserve of unassigned residents for construction: **1 by default**, **0 to disable**, adjustable up to **100**.
-- Feasible minimum operating crews selected in priority order before additional workers, subject to eligibility and the construction reserve.
-- Strict or weighted priorities, with five priority levels, searchable categories and building-type overrides.
-- A logbook with run results, confirmed changes and grouped reasons, retaining up to 50 runs per identified save slot.
+- An always-visible assignment icon. The former visibility shortcut is disabled, including previously saved bindings.
+- One manual reassignment request per click. Saved automatic schedules are disabled.
+- A saved reserve of unassigned residents for construction: **1 by default**, **0 to disable**. This preview has no reserve or shortcut editor.
+- Feasible minimum operating crews before additional workers, subject to eligibility and the construction reserve.
+- Equal priority for active supported buildings. Saved category/type priorities and strict/weighted mode selections are ignored.
+- The earlier settings and logbook code/assets retained, with their views inaccessible from this preview.
 - Paused buildings and their current workers left untouched.
 - Dynamic discovery of building definitions instead of a hardcoded building list.
 - Unsupported workplaces skipped and reported, with their workers protected.
@@ -27,15 +26,15 @@ Worker Optimizer matches residents to jobs using guild specialties, productivity
 
 ## Status
 
-The stable release, **v0.2.0**, is available on [GitHub Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0) and [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514). Built for **Whiskerwood 0.7.209.0 for Windows**. The [assignment hotfix pre-release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.1-hotfix.1) is available separately on GitHub; its Workshop upload is prepared for manual submission.
+The target is **Whiskerwood 0.7.209.0 for Windows**. The [v0.3.0-preview release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.0-preview) contains the preview package and its current verification record. The [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) receives this version only after a separate manual submission.
 
-On **6 October 2026**, candidate **0.2.0-local.7** passed the full automated test run, full cook and package checks. Four native UMG frames with synthetic editor data passed the UI checks. The author also confirmed that the final test in the shipping game passed. The v0.2.0 release uses that exact tested PAK; only descriptor version and description metadata changed. See [release validation](PREVIEW.md). Larger settlements, complex school arrangements and interactions with other mods need further testing. Use a separate test save before trying it in an established settlement.
+**In-game validation is pending and belongs to the user.** The changed native assignment request path must be tested in the shipping game. Editor tests use native-function stubs and cannot establish that game-side commands succeed. Use a separate test save. See [preview notes](releases/v0.3.0-preview.md).
 
 ## Installation
 
-The existing Workshop subscription currently installs **v0.1.1-dev**. The **v0.2.0** Workshop update is prepared and awaits manual submission. For Workshop installation, subscribe, wait for Steam to download and restart the game. Remove any separate local WorkerOptimizer installation first.
+For Workshop installation, subscribe, wait for Steam to download and restart the game. The prepared v0.3.0-preview upload is not a live Workshop update until manually submitted. To test this preview before submission, use its GitHub package and avoid loading the Workshop copy at the same time.
 
-For manual installation of **v0.2.0**, download [WorkerOptimizer-v0.2.0.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.2.0/WorkerOptimizer-v0.2.0.zip) from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0), not the source-code ZIP. Use either Workshop or a local installation, never both. Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
+For manual installation, download [WorkerOptimizer-v0.3.0-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.0-preview/WorkerOptimizer-v0.3.0-preview.zip) from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.0-preview), not the source-code ZIP. Use either Workshop or a local installation, never both. Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
 
 ```text
 %LOCALAPPDATA%\Whiskerwood\Saved\mods\WorkerOptimizer\
@@ -43,46 +42,41 @@ For manual installation of **v0.2.0**, download [WorkerOptimizer-v0.2.0.zip](htt
   WorkerOptimizer.uplugin
 ```
 
-Start the game and load a settlement. The action button and settings gear appear in the lower-left corner.
+Start the game and load a settlement. Only the assignment icon should appear in the lower-left corner; settings and logbook controls must not appear.
 
 The packaged mod does not require Python, Unreal Editor or the development tools. To uninstall, close the game and remove only the `WorkerOptimizer` folder from `mods`. Do not remove any save files.
 
 ## Usage
 
-Click the arrow button to run the optimizer. The button stays locked and displays a busy indicator until the request finishes. Extra clicks do not restart or cancel it; settings, logbook and visibility controls remain available.
+Click the assignment icon to run the optimizer. The icon displays a busy indicator until the request completes. Extra clicks do not restart or cancel it. No settings or logbook views are accessible.
 
-The optimizer captures scoring values once per plan. Ordinary speed/productivity fluctuations do not abort the request. Relevant workplace or eligibility changes can trigger at most two automatic replans under the same frozen settings and logbook entry. Confirmed changes are retained, and a pending native command must be observed before replanning. An unconfirmed command keeps the start button locked to prevent overlapping changes; loading another world ends the old session. There is no player cancellation or automatic rollback of confirmed changes.
+The optimizer captures scoring values once per plan. Ordinary speed/productivity fluctuations do not abort the request. Relevant workplace or eligibility changes can trigger bounded automatic replanning within the same manual request; this is not a scheduled run. The supported native calls update their assignment state before returning, so the result is checked immediately. Only observed effects count as confirmed changes. There is no player cancellation or automatic rollback of confirmed changes.
 
-**Hotfix pre-release v0.2.1-hotfix.1:** a delayed confirmation can now recover within the same request. After the original 10-second action timeout, the mod allows 10 more seconds for recovery. It checks the current result before ending an unresolved request, replaces the busy indicator with a failure, and publishes a logbook entry with uncertain final totals marked unknown. The start button remains locked while the native command is unresolved; an exact late result unlocks it, but never resumes the stopped queue. Permanently rejected native commands cannot be guaranteed to succeed. The hotfix has not yet completed in-game acceptance.
+A rejected or unobserved result is treated as failure. After the request and its result processing finish, another manual attempt is possible; a returned native failure does not leave a persistent lock or require a world reload. An unrelated later state change is not counted as a late success. Revised native request handling still needs game testing and does not guarantee acceptance by the game. Inspect results in the game's building/resident windows and consult the mod log when reporting failures.
 
-**Ctrl + Alt + O** hides or shows the controls without changing assignments. The adjacent gear opens **General**, **Priorities** and **Logbook**. General contains the reserve, assignment mode, automatic schedule and visibility shortcut. Priorities provides building search, expandable categories and building-type overrides. The logbook button opens run history directly.
+The icon is always visible. **Ctrl + Alt + O** and previously saved visibility bindings are disabled. There is no gear, logbook button or shortcut editor in this preview.
 
-In the older **v0.1.1-dev** Workshop package, the gear changes the visibility shortcut and assignment preferences are in the game's **Settings > Mods** menu. That release runs on demand and does not include the new tabbed panel, automatic schedule or logbook.
+### Existing Preferences
 
-| Setting | Behavior |
+| Saved preference | Behavior in this preview |
 | --- | --- |
-| Assignment mode: strict | Higher priority tiers take precedence over lower tiers after minimum-crew selection. |
-| Assignment mode: weighted | Priorities influence the productivity score, allowing trade-offs between priorities and productivity. |
-| Residents kept free for building | Minimum number of eligible residents to leave unassigned. This reserve takes precedence over building staffing. |
-| Automatic assignment | Off by default; choose day start or every 5, 10 or 15 real-time minutes. |
-| Category priority | Sets a default priority from Very low to Very high. |
-| Building-type priority | Overrides the category for every building of that type, or inherits the category setting. |
+| Residents kept free for building | Respected. Minimum number of eligible residents to leave unassigned; default 1 when unset. Takes precedence over staffing. |
+| Assignment mode: strict/weighted | Ignored. Active supported buildings use the same priority. |
+| Category and building-type priorities | Ignored. No building receives an earlier priority tier from old preferences. |
+| Automatic assignment | Disabled, including an earlier saved day-start or minute schedule. |
+| Visibility shortcut | Disabled. The icon remains visible, including with an older saved binding. |
 
 The reserve counts eligible, movable residents only. Workers protected in paused or unsupported buildings do not count toward it, and construction-yard employees are not unassigned builders. If fewer eligible residents are available than requested, all available residents remain free.
 
-For example, with five available residents and three buildings that each need one worker to operate, a reserve of two leaves one worker in each building. A higher-priority building does not take a second worker at the expense of another building's feasible minimum crew. If there are too few eligible residents to supply all minimum crews, priorities determine which crews can be staffed.
+For example, with five residents eligible for all three one-worker workplaces and a saved reserve of two, the staffing target is one worker in each workplace and two free residents. Extra positions are considered after feasible minimum crews. When there are too few suitable residents to staff every minimum crew, some workplaces remain unstaffed; equal priority does not remove eligibility or reserve constraints.
 
-Global game pause also pauses assignment processing. Resume the simulation to let a queued run complete. The visibility shortcut works while paused.
+Native assignment effects are checked after each call returns. There is no delayed command queue that needs the simulation to resume before it can confirm a returned call.
 
-### Automatic Assignment
+### Disabled Views and Schedules
 
-Automatic assignment is optional and off by default. Choose **Day start**, **5 minutes**, **10 minutes** or **15 minutes** in General. Minute intervals use real time, including time spent paused. A run that becomes due while paused waits for the simulation to resume; missed intervals coalesce into one pending run instead of accumulating. The next minute interval starts when the active run ends. Switching to Off stops future automatic runs but does not cancel an active request.
+There are no scheduled runs in this preview. Loading a save, a new day or elapsed timer intervals must not start an assignment request. This also applies when a schedule was enabled in an earlier release.
 
-### Logbook
-
-The logbook shows timestamps, results, confirmed assignment changes and grouped reasons. Use **All** or **Problems** to filter runs, then select an entry for details. It retains the latest 50 runs per identified save slot.
-
-History is stored separately from the game save. Different save names or autosave slots can have separate histories; loading an older version of the same slot does not rewind its logbook. Copying only the save file does not copy the history. If the save slot cannot be identified safely, history stays in the current session. An entry awaiting persistence may be lost on immediate exit. History storage status is separate from the assignment result.
+The former settings, priorities and logbook implementation remains in the source and assets, but its views cannot be opened. Stored preferences and history are not deleted as part of the interface simplification. Existing reserve values are read without providing an editor for them. Earlier documentation describing those panels applies only to the corresponding older release.
 
 ### Languages
 
@@ -100,23 +94,23 @@ Each run has five stages:
 
 1. **Capture the settlement.** Read player-owned workplaces, their slots and current occupants, then collect eligible residents. Exclude paused or unsupported workplaces and protect their occupants.
 2. **Score possible assignments.** Check education and role requirements, then calculate productivity for each hypothetical workplace. Employment-dependent modifiers are adjusted for the destination instead of blindly reusing the resident's current displayed productivity. School assignments use teacher/student eligibility and learning-rate scoring.
-3. **Plan staffing.** Reserve the requested free residents, select feasible minimum crews in priority order, then fill additional positions according to the selected priority mode. Where a workplace has no fixed minimum role, an eligible occupied slot supplies its initial crew. Native required roles still have to form complete crews. The assignment solver uses a shortest-augmenting-path approach; strict tiers preserve earlier tier results while resolving later tiers. Empty slots are represented explicitly.
+3. **Plan staffing.** Reserve the saved number of free residents, give active supported buildings equal priority, select feasible minimum crews, then fill additional positions by worker suitability. Where a workplace has no fixed minimum role, an eligible occupied slot supplies its initial crew. Native required roles still have to form complete crews. The assignment solver uses a shortest-augmenting-path approach. Empty slots are represented explicitly.
 4. **Validate the result.** Reject duplicate assignments, invalid roles and inconsistent snapshots before applying changes. Teacher-dependent school assignments are checked as complete plans.
-5. **Apply and confirm.** Send the game's native fire/hire actions one at a time and check the actual workplace and slot after each action. Relevant changes can trigger bounded automatic replanning; an unresolved command or exhausted retries stops further changes with a reported reason. The mod does not directly overwrite the game's workforce arrays.
+5. **Apply and confirm.** Release the workers needed for the next target and its native dependencies, then hire the selected worker. There is no global fire-all batch. Firing a native required worker also dismisses that building's optional workers, so the queue explicitly releases movable optional workers first and schedules their planned assignments afterward. If an optional occupant is protected, the planner keeps affected required incumbents fixed to avoid that collateral dismissal. Other unchanged assignments remain in place; remaining surplus workers are released afterward. Send native fire/hire actions one at a time and check the workplace and slot immediately after each call returns. Relevant changes can trigger bounded automatic replanning; a rejected result or exhausted retries ends the request with a reported reason. Only observed effects are counted. The mod does not directly overwrite the game's workforce arrays.
 
 Among otherwise equal production outcomes, the reserve selection favors residents with better neutral productivity, carrying capacity and movement speed. This is a tie-breaking heuristic, not a prediction of exact construction time.
 
-Planning advances incrementally across ticks. A map-load session owns the controller, action bridge and widget, prevents duplicate controls and cleans up its references when the world ends. Loading a save does not itself trigger an assignment run; an enabled schedule waits for its next due event.
+Planning advances incrementally across ticks. A map-load session owns the controller, action bridge and widget, prevents duplicate controls and cleans up its references when the world ends. Loading a save does not trigger an assignment run, and schedules are disabled.
 
 Startup listens for the native load-completion event and also checks `ProjectArcoGameModeBase.CurrentInitPhase`. Once the phase is `DONE` and a player controller exists, a missing event no longer prevents session creation. The fallback is checked at half-second intervals and stops once the session is ready; it never triggers optimization.
 
-The controls and panel adapt to viewport size and the game's UI scale. The panel uses a narrow layout where needed, scrollable content and a minimum readable panel text size when the game reduces UI scale. Larger game scales remain respected. Resolution and DPI changes update the open panel. Other mods' overlays are not automatically detected.
+The assignment icon adapts to viewport size and the game's UI scale. Other mods' overlays are not automatically detected. The retained panel implementation is inaccessible in this preview.
 
 ### Update Compatibility
 
-Building types, guild specialties, slot layouts and category identifiers come from game data. Priorities use stable internal identifiers rather than translated building names. New building types using supported workplace components can therefore participate without adding their names to the mod.
+Building types, guild specialties and slot layouts come from game data. New building types using supported workplace components can participate without adding their names to the mod.
 
-The workplace adapter and native action bridge are version-sensitive. A new component implementation or changed game API may still require an update. Unknown workplaces are preserved rather than assigned using guessed rules. Newly discovered types initially inherit their category priority; changes to their new settings take effect on the next run.
+The workplace adapter and native action bridge are version-sensitive. A new component implementation or changed game API may still require an update. Unknown workplaces are preserved rather than assigned using guessed rules. Newly discovered supported types use the same priority as other active supported buildings.
 
 ### Source Layout
 
@@ -126,7 +120,7 @@ Automation/WorkerOptimizer/      Asset generators, tests and packaging scripts
 Plugins/WorkerOptimizerEditor/   Editor-only authoring and test support
 ```
 
-`BP_WorkforceSnapshot` and `BP_WorkplaceAdapter` handle discovery. `BP_JobEligibility` and `BP_JobScorer` provide eligibility and scoring. `BP_StaffingPlanner`, `BP_AssignmentSolver` and `BP_PlanSearch` produce the plan. `BP_ActionPlan`, `BP_ActionBridge` and `BP_ApplicationRunner` validate and apply it. `BP_AutoAssignment` manages scheduling, and `BP_Logbook` manages run history. `BP_PrioritySettings`, `BP_SettingsModel`, `BP_HotkeyConfig`, `BP_Startup`, `BP_MapLoad` and the `WBP_` widgets handle preferences, lifecycle and the interface.
+`BP_WorkforceSnapshot` and `BP_WorkplaceAdapter` handle discovery. `BP_JobEligibility` and `BP_JobScorer` provide eligibility and scoring. `BP_StaffingPlanner`, `BP_AssignmentSolver` and `BP_PlanSearch` produce the plan. `BP_ActionPlan`, `BP_ActionBridge` and `BP_ApplicationRunner` validate and apply it. `BP_AutoAssignment`, `BP_Logbook`, `BP_SettingsModel`, `BP_HotkeyConfig` and the former panel widgets remain present, but scheduling, visibility shortcuts and panel access are disabled. `BP_PrioritySettings`, `BP_Startup`, `BP_MapLoad` and the main widget handle preserved preferences, lifecycle and the manual icon.
 
 The editor helper is a development dependency only. It is excluded from the packaged mod. Runtime assets reference existing game content; the mod package does not bundle the game or Unreal Engine.
 
@@ -159,6 +153,16 @@ Only the `.pak` and `.uplugin` files in that folder are installation inputs. The
 
 ## Verification and Known Limits
 
+**Current preview: in-game validation is pending.** The user will test **0.3.0-preview**. Its native assignment changes must be checked against the real game; neither editor fixtures nor successful package checks prove that live assignments succeed. See [preview notes](releases/v0.3.0-preview.md) for the current verification status.
+
+The full automated suite, Windows cook and 46-asset package verification passed on 7 October 2026 (CEST). The exact build and PAK checksum are recorded in the [verification report](verification/2026-10-07-manual-core.md).
+
+Acceptance should cover the single visible icon, inaccessible legacy panels, old saved schedules staying inactive, equal treatment despite old priority/mode preferences, the preserved builder reserve, minimum crews before extra staffing, and actual confirmed worker changes. Test in a separate save, including a save with existing preferences.
+
+### Historical Checks
+
+The following records describe older releases only. They do not validate the new manual interface or native request handling.
+
 The complete automated test run, full cook and package checks passed for **0.2.0-local.7 on 6 October 2026**. Its final in-game test was confirmed green by the author on the same date. The **v0.2.0** release PAK is byte-identical to that tested candidate; only descriptor version and description metadata changed. Coverage includes assignment planning, fixed and flexible minimum crews, priorities, protected workers, reserves, language catalogs, settings, schedules, logbook behavior, lifecycle, action confirmation and the redesigned UI. Package checks confirmed 46 runtime assets and excluded editor helpers and test probes. See the [release PAK checksum](PREVIEW.md#verification).
 
 Four native UMG frames using synthetic editor data cover wide history at 1920x1080 and reduced DPI, plus narrow history, priorities and general settings at 1280x720 and reduced DPI. Native event checks exercise history selection and category expansion; geometry checks cover columns, text, scrolling and panel bounds. These editor checks are separate from the author's final in-game confirmation. Editor tests cannot prove all native game behavior because the modkit contains native-function stubs.
@@ -180,7 +184,7 @@ The optimizer follows its defined staffing and productivity objectives. It does 
 
 ## Reporting Problems
 
-Include the game version, other active mods, resident/building/school counts, reserve and priority settings, the expected result, the actual result and the button tooltip. Before/after screenshots of assignments are useful.
+Include the mod and game versions, other active mods, resident/building/school counts, the saved builder reserve if known, the expected result, the actual result and the icon tooltip. Note whether the save had older schedule or priority preferences. Before/after screenshots of assignments are useful; this preview has no accessible logbook view.
 
 The game's mod log is located at:
 

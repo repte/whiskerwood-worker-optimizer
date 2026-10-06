@@ -65,6 +65,15 @@ def run():
         capture()
         assert not check(), "Unqualified workers must fail the final action guard, not only planning"
         assert str(bridge.get_editor_property("RejectionGuard")) == "bridge.hire_role_eligibility"
+        assert workforce.import_text("(m_workerSlots=((educationRequirement=ApprenticeOnly,bIsRequiredToRun=True),()))")
+        put(component, "m_workers", workforce)
+        assert ch.import_text("(ID=701,education=Apprentice)")
+        put(person, "m_characteristics", ch)
+        capture()
+        assert not check(), "A selector-only match must never be sent to native hire"
+        assert str(bridge.get_editor_property("RejectionGuard")) == "bridge.hire_role_eligibility"
+        assert ch.import_text("(ID=701)")
+        put(person, "m_characteristics", ch)
         assert workforce.import_text("(m_workerSlots=((bIsRequiredToRun=True),()))")
         put(component, "m_workers", workforce)
         capture()
@@ -140,10 +149,30 @@ def run():
         assert not bridge.call_method("RejectAction", args=("bridge.later_guard",))
         assert str(bridge.get_editor_property("RejectionGuard")) == "bridge.definition_unavailable", "First rejection must not be overwritten"
         assert bridge.get_editor_property("QueuedActions") == 0
+        native_result = lambda fire=False, target=snapshot: bridge.call_method("ConfirmNativeResult", args=(target, 0, 1, 0, fire))
+        assert not native_result(), "A returned native call with an unchanged empty slot is a rejection, not pending work"
+        assert str(bridge.get_editor_property("RejectionGuard")) == "bridge.native_rejected"
+        put(slots[1], "Agent", person)
+        put(workforce, "m_workerSlots", slots)
+        put(component, "m_workers", workforce)
+        assert native_result(), "The exact intended hire is the native receipt"
+        assert str(bridge.get_editor_property("RejectionGuard")) == "None"
+        assert not native_result(fire=True), "An unchanged fire target must not be acknowledged"
+        put(slots[1], "Agent", collision)
+        put(workforce, "m_workerSlots", slots)
+        put(component, "m_workers", workforce)
+        assert not native_result(), "Another worker in the slot is not our successful hire"
+        assert not native_result(fire=True), "Replacing an occupant is not the expected empty fire result"
+        put(slots[1], "Agent", None)
+        put(workforce, "m_workerSlots", slots)
+        put(component, "m_workers", workforce)
+        assert native_result(fire=True), "A cleared target slot confirms the native fire"
+        assert not native_result(target=None), "Unavailable post-call observations cannot count as accepted"
+        assert bridge.get_editor_property("QueuedActions") == 0, "Observing a native result must never dispatch another action"
         assert not bridge.call_method("InitializeBridge", args=(None,))
         assert not bridge.call_method("QueueAction", args=(snapshot, 0, 1, 0, False))
         assert str(bridge.get_editor_property("RejectionGuard")) == "bridge.not_ready", "New dispatch resets stale rejection evidence"
-        unreal.log("WO_ACTION_BRIDGE_TESTS_PASS: snapshot/indices/ownership/pause/availability/occupancy/required-crew guards, private context, disabled tick; no native actions executed")
+        unreal.log("WO_ACTION_BRIDGE_TESTS_PASS: native admission and exact post-call slot receipts, snapshot/indices/ownership/pause/availability/occupancy/required-crew guards, private context, disabled tick; no native actions executed")
     finally:
         for obj in reversed(spawned):
             actors.destroy_actor(obj)

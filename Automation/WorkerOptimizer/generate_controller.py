@@ -408,9 +408,6 @@ code["AdvanceRun"] = f"""(fn AdvanceRun (Now)
       (:6
         {invoke('Runner', 'AdvanceApplication', ':Now Now')}
         (bind synced (CallFunction|SyncApplication))
-        ; A deadline never proves cancellation. Bound recovery, retaining the receipt lock.
-        (if (and {g('RunActive')} (and {prop('Runner', 'Waiting')} (>= Now (+ {prop('Runner', 'Deadline')} 10.0))))
-          (CallFunction|FailRun :Reason "action_timeout") (return false))
         (return synced))
       (:Default {fail('invalid_phase')})))"""
 code["CancelRun"] = f"""(fn CancelRun ()

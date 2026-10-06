@@ -287,7 +287,8 @@ code["SetupStep"] = f"""(fn SetupStep ()
       {put('SetupRow', f'(+ {g("SetupRow")} 1)')} (return true))
     (Utilities|Array|SetArrayElem :TargetArray {g('Minimum')} :Index {g('StudentMinimum')} :Item true)
     (if (and (>= teacher 0) (>= {at(lg('FixedSlots'), g('StudentMinimum'))} 0))
-      (if (< teacher {count(sg('Workers'))})
+      (if (and (< teacher {count(sg('Workers'))})
+        (not (and (== {at(lg('FixedSlots'), 'first')} teacher) (== {at(lg('Incumbents'), 'first')} teacher))))
         (bind teacherEligible (Class|BPJobEligibility|CanFillSlot :self {g('Snapshot')}
           :Worker {at(lg('ColumnActors'), 'teacher')} :Building {at(sg('Buildings'), 'b')} :SlotIndex 0))
         (if (not teacherEligible) {fail('ineligible_required_teacher')}))
@@ -334,6 +335,19 @@ for name, source in code.items():
         raise
 with toolset_registry.tool_raising_exceptions():
     for name, source in code.items():
+        # Rewritten bodies must not retain old parameter-linked nodes.
+        result_kept = False
+        for old_node in BP.find_nodes(graphs[name]):
+            kind = old_node.get_class().get_name()
+            if kind == "K2Node_FunctionEntry":
+                continue
+            if kind == "K2Node_FunctionResult" and not result_kept:
+                result_kept = True
+                for pin in BP.get_node_infos([old_node])[0].input_pins:
+                    for connected in pin.connected_pins:
+                        BP.break_pins(connected, pin.pin_id)
+                continue
+            BP.delete_node(old_node)
         unreal.log("WO_SCORE_MATRIX_WRITE " + name)
         BP.write_graph_dsl(graphs[name], source)
     BP.compile_blueprint(bp, warnings_as_errors=True)
