@@ -102,6 +102,18 @@ def run():
         snapshot.call_method("RecordValidationFailure", args=("building.id", 0, "700", "702"))
         rejected = controller.call_method("BuildFailureDiagnostic", args=("action_rejected",))
         assert "guard=building.id" in rejected and "captured=700" in rejected and "live=702" in rejected, "Action rejection must retain snapshot evidence too"
+        snapshot.call_method("ResetSnapshot")
+        assert snapshot.call_method("AddBuilding", args=(building,))
+        snapshot.call_method("FinishBuildings")
+        assert snapshot.call_method("AddWorker", args=(worker, building))
+        snapshot.call_method("AdvanceCapture")
+        snapshot.call_method("AdvanceCapture")
+        assert runner.call_method("StartApplication", args=(snapshot, bridge, [0], [0], [0], [True], 10.0))[-1]
+        assert runner.call_method("AdvanceApplication", args=(10.0,))
+        assert runner.call_method("RecordDispatch", args=(True, 10.0))
+        timed_out = controller.call_method("BuildFailureDiagnostic", args=("action_timeout",))
+        for part in ("WorkerOptimizer stopped: action_timeout", "pending=fire", "worker_id=701", "building_id=702", "slot=0", "waiting=true", "occupant=", "workplace=", "confirmed=0"):
+            assert part in timed_out, (part, timed_out)
         assert not controller.get_editor_property("MeasurePerformance"), "Detailed performance capture stays default-off"
         unreal.log("WO_FAILURE_DIAGNOSTICS_TESTS_PASS: soft quality progression accepted, hard guards retained, first guard, scalar evidence, phase/counts, reset and single terminal emission boundary")
     finally:

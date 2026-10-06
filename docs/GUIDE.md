@@ -8,7 +8,7 @@ Assign residents to suitable workplaces with one click, while keeping a configur
 
 Worker Optimizer matches residents to jobs using guild specialties, productivity and job eligibility. It selects feasible minimum operating crews in priority order before filling additional positions, with category priorities and building-type overrides to control where workers are needed most.
 
-**Version scope:** this guide describes **v0.2.0**, available from [GitHub Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0). The Workshop update is prepared and awaits manual submission; the published Workshop package remains **v0.1.1-dev**.
+**Version scope:** the stable release is **v0.2.0**, available on GitHub and Steam Workshop. Differences in the **v0.2.1-hotfix.1** pre-release are marked below; its in-game acceptance and Workshop submission are pending.
 
 ## Features
 
@@ -27,7 +27,7 @@ Worker Optimizer matches residents to jobs using guild specialties, productivity
 
 ## Status
 
-The first regular release, **v0.2.0**, is available on [GitHub Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0). Built for **Whiskerwood 0.7.209.0 for Windows**. The [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) update awaits manual submission.
+The stable release, **v0.2.0**, is available on [GitHub Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0) and [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514). Built for **Whiskerwood 0.7.209.0 for Windows**. The [assignment hotfix pre-release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.1-hotfix.1) is available separately on GitHub; its Workshop upload is prepared for manual submission.
 
 On **6 October 2026**, candidate **0.2.0-local.7** passed the full automated test run, full cook and package checks. Four native UMG frames with synthetic editor data passed the UI checks. The author also confirmed that the final test in the shipping game passed. The v0.2.0 release uses that exact tested PAK; only descriptor version and description metadata changed. See [release validation](PREVIEW.md). Larger settlements, complex school arrangements and interactions with other mods need further testing. Use a separate test save before trying it in an established settlement.
 
@@ -52,6 +52,8 @@ The packaged mod does not require Python, Unreal Editor or the development tools
 Click the arrow button to run the optimizer. The button stays locked and displays a busy indicator until the request finishes. Extra clicks do not restart or cancel it; settings, logbook and visibility controls remain available.
 
 The optimizer captures scoring values once per plan. Ordinary speed/productivity fluctuations do not abort the request. Relevant workplace or eligibility changes can trigger at most two automatic replans under the same frozen settings and logbook entry. Confirmed changes are retained, and a pending native command must be observed before replanning. An unconfirmed command keeps the start button locked to prevent overlapping changes; loading another world ends the old session. There is no player cancellation or automatic rollback of confirmed changes.
+
+**Hotfix pre-release v0.2.1-hotfix.1:** a delayed confirmation can now recover within the same request. After the original 10-second action timeout, the mod allows 10 more seconds for recovery. It checks the current result before ending an unresolved request, replaces the busy indicator with a failure, and publishes a logbook entry with uncertain final totals marked unknown. The start button remains locked while the native command is unresolved; an exact late result unlocks it, but never resumes the stopped queue. Permanently rejected native commands cannot be guaranteed to succeed. The hotfix has not yet completed in-game acceptance.
 
 **Ctrl + Alt + O** hides or shows the controls without changing assignments. The adjacent gear opens **General**, **Priorities** and **Logbook**. General contains the reserve, assignment mode, automatic schedule and visibility shortcut. Priorities provides building search, expandable categories and building-type overrides. The logbook button opens run history directly.
 

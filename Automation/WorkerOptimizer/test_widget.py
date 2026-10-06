@@ -4,6 +4,7 @@ import unreal
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
+import toolset_registry
 from editor_toolset.toolsets.blueprint import BlueprintTools as BP
 
 
@@ -141,7 +142,7 @@ def run():
             auto_widget.call_method('ShutdownUI')
             auto_widget.remove_from_parent()
             auto_controller.call_method("Shutdown")
-        # An already-dispatched action may still be pending after internal cancellation.
+        # A terminal failure can still have a native command and report outstanding.
         native = lambda name: unreal.load_class(None, "/Script/ProjectArco." + name)
         put = lambda obj, name, value: obj.set_editor_property(name, value, notify_mode=unreal.PropertyAccessChangeNotifyMode.NEVER)
         worker = actors.spawn_actor_from_class(native("Prototype_Agent"), unreal.Vector(0, 0, -100000))
@@ -160,6 +161,15 @@ def run():
         put(slots[0], "Agent", worker)
         put(wf, "m_workerSlots", slots)
         put(component, "m_workers", wf)
+        def finish_report():
+            for _ in range(100):
+                if not controller.get_editor_property("ReportPending"):
+                    return
+                controller.call_method("AdvanceTerminalReport")
+            raise AssertionError("Widget fixture report did not finish")
+
+        finish_report()
+        assert controller.call_method("BeginRun")
         snapshot = controller.get_editor_property("Snapshot")
         snapshot.call_method("ResetSnapshot")
         assert snapshot.call_method("AddBuilding", args=(building,))
@@ -172,11 +182,58 @@ def run():
         assert runner.call_method("AdvanceApplication", args=(10.0,))
         assert not runner.get_editor_property("ValidationActive") and not runner.get_editor_property("Waiting")
         assert runner.call_method("RecordDispatch", args=(True, 10.0))
-        runner.call_method("FailApplication", args=("cancelled",))
+        assert widget.call_method("RefreshUI")
+        assert widget.get_editor_property("BusyIndicator").get_visibility() == unreal.SlateVisibility.HIT_TEST_INVISIBLE
+        assert not widget.get_editor_property("ActionButton").get_is_enabled(), "Active native confirmation must remain busy and disabled"
+        assert not runner.call_method("ObserveAction", args=(building, 21.0))
+        assert str(runner.get_editor_property("FailureCode")) == "action_timeout"
+        assert not controller.call_method("FailRun", args=("action_timeout",))
+        assert controller.get_editor_property("RunDone") and not controller.get_editor_property("RunActive")
+        assert not controller.get_editor_property("ReportPending"), "Unresolved terminal timeout must publish its failure without waiting for native confirmation"
         assert runner.get_editor_property("Waiting")
         assert widget.call_method("RefreshUI")
+        assert widget.get_editor_property("BusyIndicator").get_visibility() == unreal.SlateVisibility.COLLAPSED, "Terminal timeout must replace the spinner even while native confirmation is pending"
+        assert widget.get_editor_property("BusyText").get_visibility() == unreal.SlateVisibility.COLLAPSED
+        assert widget.get_editor_property("ActionButtonIcon").get_visibility() == unreal.SlateVisibility.HIT_TEST_INVISIBLE
+        outcome = widget.get_editor_property("OutcomeIcon")
+        assert outcome.get_visibility() == unreal.SlateVisibility.HIT_TEST_INVISIBLE
+        assert outcome.get_editor_property("brush").get_editor_property("resource_object") == unreal.load_asset(root + "T_WorkerOptimizerStatusError")
+        expected_failure = widget.call_method("UIString", args=("failed",))
+        actual_tooltip = str(widget.get_editor_property("ActionButton").get_editor_property("tool_tip_text"))
+        assert actual_tooltip == expected_failure, ("Timeout must use the existing localized failure message", actual_tooltip, expected_failure)
         assert not widget.get_editor_property("ActionButton").get_is_enabled(), "Pending native result must visibly block a new run"
         assert not widget.call_method("ClickAction")
+        widget.get_editor_property("ActionButton").on_clicked.broadcast()
+        assert not controller.get_editor_property("RunActive") and runner.get_editor_property("Waiting")
+        assert str(controller.get_editor_property("FailureCode")) == "action_timeout", "Clicks must not cancel or replace a terminal failure"
+        writes = widget.get_editor_property("UIWriteCount")
+        assert widget.call_method("RefreshUI")
+        assert widget.get_editor_property("UIWriteCount") == writes, "Stable terminal failure must not repaint"
+        put(slots[0], "Agent", None)
+        put(wf, "m_workerSlots", slots)
+        put(component, "m_workers", wf)
+        assert runner.call_method("ObserveAction", args=(None, 22.0))
+        assert not runner.get_editor_property("Waiting")
+        # Isolate the report-only admission gate with transient native UI inputs.
+        report_fixture = BP.create("/Game/WorkerOptimizerEditorTests", "BP_WidgetReportInputs", unreal.Object.static_class())
+        report_graph = BP.add_function_graph(report_fixture, "SetPending")
+        BP.add_object_function_param(report_graph, "Controller", load("BP_WorkerOptimizer"), True)
+        BP.add_function_param(report_graph, "Pending", "bool", True)
+        BP.compile_blueprint(report_fixture)
+        with toolset_registry.tool_raising_exceptions():
+            BP.write_graph_dsl(report_graph, '(fn SetPending (Controller Pending) (Class|BPWorkerOptimizer|SetReportPending :self Controller :ReportPending Pending))')
+            BP.compile_blueprint(report_fixture, warnings_as_errors=True)
+        report_inputs = unreal.new_object(report_fixture.generated_class())
+        report_inputs.call_method("SetPending", args=(controller, True))
+        assert widget.call_method("RefreshUI")
+        assert widget.get_editor_property("BusyIndicator").get_visibility() == unreal.SlateVisibility.COLLAPSED, "Report completion must not restart a failed run's spinner"
+        assert not widget.get_editor_property("ActionButton").get_is_enabled(), "Report completion must still block a new run"
+        assert not widget.call_method("ClickAction")
+        report_inputs.call_method("SetPending", args=(controller, False))
+        assert widget.call_method("RefreshUI")
+        assert widget.get_editor_property("ActionButton").get_is_enabled(), "Completed report and native confirmation must re-enable assignment"
+        assert widget.get_editor_property("BusyIndicator").get_visibility() == unreal.SlateVisibility.COLLAPSED
+        assert str(widget.get_editor_property("ActionButton").get_editor_property("tool_tip_text")) == widget.call_method("UIString", args=("failed",))
         assert widget.call_method("ShutdownUI")
         assert not widget.call_method("ClickAction")
         assert not widget.call_method("ToggleButton")
@@ -187,7 +244,7 @@ def run():
         actors.destroy_actor(bridge)
         for obj in extra_actors:
             actors.destroy_actor(obj)
-    unreal.log("WO_WIDGET_TESTS_PASS: native tree, guarded initialize, visibility-only toggle, manual/automatic busy lock, no player cancel, settings/history access and shutdown")
+    unreal.log("WO_WIDGET_TESTS_PASS: native tree, guarded initialize, visibility-only toggle, manual/automatic busy lock, terminal timeout/late confirmation, no player cancel, settings/history access and shutdown")
 
 
 run()

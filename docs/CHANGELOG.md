@@ -1,8 +1,20 @@
 # Changelog
 
+## 0.2.1-hotfix.1 - 6 October 2026
+
+Pre-release assignment recovery hotfix. In-game acceptance is pending.
+
+- Automatically replan after a delayed native confirmation, within the existing two-replan limit.
+- End unresolved manual and automatic requests with a visible failure and logbook entry instead of an endless busy indicator.
+- Keep unconfirmed commands locked against duplicate dispatch, including after terminal failure.
+- Fix recoverable pre-dispatch rejection matching and add targeted timeout diagnostics.
+- Preserve priorities, builder reserve, assignment rules and the per-frame work budget.
+
+See [hotfix validation and limits](releases/0.2.1-hotfix.1.md).
+
 ## 0.2.0 - 6 October 2026
 
-First regular [GitHub release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0), available as [WorkerOptimizer-v0.2.0.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.2.0/WorkerOptimizer-v0.2.0.zip). The Workshop update is prepared and awaits manual submission; the Workshop package remains **v0.1.1-dev**. See [release validation](PREVIEW.md).
+First regular [GitHub release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0), available as [WorkerOptimizer-v0.2.0.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.2.0/WorkerOptimizer-v0.2.0.zip) and on Steam Workshop. See [release validation](PREVIEW.md).
 
 - Redesigned the native UMG interface with responsive General, Priorities and Logbook tabs, searchable building priorities and expandable categories.
 - Added optional automatic assignment at day start or every 5, 10 or 15 real-time minutes. Automatic assignment defaults to Off. Paused time counts toward minute intervals; due work waits until resume without accumulating missed runs.
@@ -18,7 +30,7 @@ Validation on 6 October 2026: the complete automated test run, full cook and pac
 
 ## 0.1.1-dev
 
-Earlier development release, still the published Workshop version while the 0.2.0 update awaits manual submission.
+Earlier development release, superseded by 0.2.0.
 
 - Added a startup fallback for new colonies and missed load-completion events. It waits for the game's completed initialization phase and a valid player controller.
 - Made the controls adapt to viewport size and DPI, moving above the bottom toolbar on compact layouts.

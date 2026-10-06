@@ -26,7 +26,7 @@ for kind, names in {
     "int": "Phase DecodeIndex AppliedCount QueuedCount RequestedReserve ReserveIndex PumpStartSeconds StepStartSeconds SamplePhase PolicyKeyIndex CompletedRecordCount ReplanCount PriorAppliedCount PriorQueuedCount PriorFires PriorHires",
     "float[]": "BuilderQuality",
     "name": "FailureCode RunTrigger TerminalOutcome",
-    "string": "LastFailureDiagnostic",
+    "string": "LastFailureDiagnostic PendingDiagnostic",
     "float": "PumpStart PumpNow PumpStartFraction StepStartFraction",
     "int[]": "FinalWorkers",
 }.items():
@@ -39,7 +39,7 @@ definitions = {
     "Initialize": [("InputContext", unreal.Object.static_class()), ("InputBridge", load("BP_ActionBridge"))],
     "FailRun": [("Reason", "name")], "CompleteRun": [], "BeginRun": [],
     "HandleFailure": [("Reason", "name")], "FailureRecoverable": [("Reason", "name")], "RestartPlan": [],
-    "BuildFailureDiagnostic": [("Reason", "name")],
+    "BuildFailureDiagnostic": [("Reason", "name")], "BuildPendingDiagnostic": [],
     "AcceptConfig": [("Loaded", "bool")], "DecodeAssignment": [], "SyncApplication": [],
     "AdvanceRun": [("Now", "float")], "CancelRun": [], "Shutdown": [], "ReadClock": [], "Pump": [],
     "ReadClockParts": [], "ResetPerformanceMetrics": [], "FlushPerformanceSummary": [],
@@ -55,6 +55,21 @@ if "DumpStaffingProbe" in existing_graphs:
     existing_graphs.remove("DumpStaffingProbe")
 for name, params in definitions.items():
     graphs[name] = BP.get_graph(bp, name) if name in existing_graphs else BP.add_function_graph(bp, name)
+    if name in existing_graphs:
+        # Parameter links keep old DSL bodies reachable during replacement.
+        # Preserve the signature, but rebuild each generated function body.
+        result_kept = False
+        for node in BP.find_nodes(graphs[name]):
+            kind = node.get_class().get_name()
+            if kind == "K2Node_FunctionEntry":
+                continue
+            if kind == "K2Node_FunctionResult" and not result_kept:
+                result_kept = True
+                for pin in BP.get_node_infos([node])[0].input_pins:
+                    for connected in pin.connected_pins:
+                        BP.break_pins(connected, pin.pin_id)
+                continue
+            BP.delete_node(node)
     if name not in existing_graphs:
         for param, kind in params:
             if isinstance(kind, str):
@@ -66,7 +81,7 @@ for name, params in definitions.items():
             BP.add_function_param(graphs[name], "Fraction", "float", False)
         elif name in ("ReadSchedulingClock", "ComposeSchedulingClock"):
             BP.add_function_param(graphs[name], "NowSeconds", "real", False)
-        elif name in ("ReadSaveIdentity", "BuildFailureDiagnostic"):
+        elif name in ("ReadSaveIdentity", "BuildFailureDiagnostic", "BuildPendingDiagnostic"):
             BP.add_function_param(graphs[name], "Identity" if name == "ReadSaveIdentity" else "Message", "string", False)
         else:
             BP.add_function_param(graphs[name], "Now" if name == "ReadClock" else "Result", "float" if name == "ReadClock" else "bool", False)
@@ -166,15 +181,43 @@ evidence = concat(g('LastFailureDiagnostic'), '" phase="', integer(g('Phase')), 
 counts = concat(g('LastFailureDiagnostic'), '" queued="', integer(prop('Runner', 'QueuedCount')), '" confirmed="', integer(prop('Runner', 'AppliedCount')),
                 '" fires="', integer(prop('Runner', 'ConfirmedFires')), '" hires="', integer(prop('Runner', 'ConfirmedHires')),
                 '" action="', integer(prop('Runner', 'ActionIndex')))
+
+def diagnostic_struct(struct, value, prefix):
+    pins = BP.get_node_type_pins(graphs['BuildPendingDiagnostic'], 'Utilities|Struct|Break' + struct).output_pins
+    return f"(bind ({' '.join(prefix + '_' + str(pin.name) for pin in pins)}) (Utilities|Struct|Break{struct} {value}))"
+
+code["BuildPendingDiagnostic"] = f'''(fn BuildPendingDiagnostic ()
+    {put('PendingDiagnostic', concat('" pending="', '(select ' + prop('Runner', 'PendingFire') + ' "fire" "hire")',
+        '" worker_id="', integer(prop('Runner', 'PendingWorkerID')), '" slot="', integer(prop('Runner', 'PendingSlot')),
+        '" waiting="', '(select ' + prop('Runner', 'Waiting') + ' "true" "false")'))}
+    (bind building {prop('Runner', 'PendingBuilding')})
+    (bind worker {prop('Runner', 'PendingWorker')})
+    (if {present('worker')}
+      (bind workplace (Class|PrototypeAgent|GetWorkplace :self worker))
+      {put('PendingDiagnostic', concat(g('PendingDiagnostic'), '" workplace="', '(Utilities|String|ToString(Object) workplace)'))})
+    (if {present('building')}
+      {put('PendingDiagnostic', concat(g('PendingDiagnostic'), '" building_id="', integer('(Class|GridActor|GetID :self building)')))}
+      (if {present(g('Snapshot'))}
+        (bind (known workforce) (Class|BPWorkplaceAdapter|ReadWorkplace :self {g('Snapshot')} :Building building))
+        (if known
+          {diagnostic_struct('WorkerAssignment', 'workforce', 'wf')}
+          (if (Utilities|Array|IsValidIndex wf_m_workerSlots {prop('Runner', 'PendingSlot')})
+            {diagnostic_struct('WorkerSlot', at('wf_m_workerSlots', prop('Runner', 'PendingSlot')), 'slot')}
+            {put('PendingDiagnostic', concat(g('PendingDiagnostic'), '" occupant="', '(Utilities|String|ToString(Object) slot_Agent)'))}))))
+    (return {g('PendingDiagnostic')}))'''
 code["BuildFailureDiagnostic"] = f'''(fn BuildFailureDiagnostic (Reason)
     {put('LastFailureDiagnostic', '(Utilities|String|Append :A "WorkerOptimizer stopped: " :B (Utilities|String|ToString(Name) Reason))')}
-    (if (not (or (== Reason "world_changed") (== Reason "action_rejected"))) (return {g('LastFailureDiagnostic')}))
+    (if (not (or (== Reason "action_timeout") (or (== Reason "world_changed") (== Reason "action_rejected")))) (return {g('LastFailureDiagnostic')}))
     (if {present(g('Snapshot'))}
       (bind guard {prop('Snapshot', 'ValidationGuard')})
       (if (== guard "None") {put('LastFailureDiagnostic', concat(g('LastFailureDiagnostic'), '" phase="', integer(g('Phase')), '" guard=phase_component_unattributed"'))}
         (else {put('LastFailureDiagnostic', evidence)}))
       (else {put('LastFailureDiagnostic', concat(g('LastFailureDiagnostic'), '" phase="', integer(g('Phase')), '" guard=snapshot_unavailable"'))}))
-    (if {present(g('Runner'))} {put('LastFailureDiagnostic', counts)})
+    (if {present(g('Runner'))}
+      {put('LastFailureDiagnostic', counts)}
+      (if {prop('Runner', 'Waiting')}
+        (bind pending (CallFunction|BuildPendingDiagnostic))
+        {put('LastFailureDiagnostic', concat(g('LastFailureDiagnostic'), 'pending'))}))
     (if (and (== Reason "action_rejected") {present(g('Bridge'))})
       {put('LastFailureDiagnostic', concat(g('LastFailureDiagnostic'), '" bridge="', '(Utilities|String|ToString(Name) (Class|BPActionBridge|GetRejectionGuard :self (Variables|Default|GetBridge)))'))})
     (return {g('LastFailureDiagnostic')}))'''
@@ -182,9 +225,9 @@ recoverable_bridge_guards = ("building_changed", "worker_changed", "disabled", "
                             "fire_occupancy", "worker_not_free", "slot_occupied", "optional_before_required")
 bridge_drift = "false"
 for guard in recoverable_bridge_guards:
-    bridge_drift = f'(or (== guard "{guard}") {bridge_drift})'
+    bridge_drift = f'(or (== guard "bridge.{guard}") {bridge_drift})'
 code["FailureRecoverable"] = f"""(fn FailureRecoverable (Reason)
-    (if (== Reason "world_changed") (return true))
+    (if (or (== Reason "world_changed") (== Reason "action_timeout")) (return true))
     (if (and (== Reason "action_rejected") {present(g('Bridge'))})
       (bind guard (Class|BPActionBridge|GetRejectionGuard :self {g('Bridge')}))
       (return {bridge_drift}))
@@ -234,7 +277,11 @@ code["ReadSaveIdentity"] = """(fn ReadSaveIdentity ()
     (return (Class|ArcoSystems|GetMAssociatedSave :self systems)))"""
 code["AdvanceTerminalReport"] = f"""(fn AdvanceTerminalReport ()
     (if (or (not {g('ReportPending')}) (or (not {g('RunDone')}) {g('RunActive')})) (return false))
-    (if (or {prop('Runner', 'Waiting')} {prop('Runner', 'Active')}) (return false))
+    (if {prop('Runner', 'Active')} (return false))
+    (if {prop('Runner', 'Waiting')}
+      (if (!= {g('TerminalOutcome')} "failed") (return false))
+      (bind closed {invoke('CurrentReport', 'CloseUnavailable', f':Outcome "failed" :Failure {g("FailureCode")} :Runner {g("Runner")}')})
+      (if closed (CallFunction|PublishTerminalReport)) (return closed))
     (if (not {prop('CurrentReport', 'FinishStarted')})
       (bind accepted {invoke('CurrentReport', 'BeginFinish', f':Outcome {g("TerminalOutcome")} :Failure {g("FailureCode")} :Snapshot {g("Snapshot")} :Layout {g("Layout")} :Runner {g("Runner")}')})
       (if (not accepted) (return false)))
@@ -360,7 +407,11 @@ code["AdvanceRun"] = f"""(fn AdvanceRun (Now)
         (if (not applicationStarted) {fail_from('Runner')}) {put('Phase', '6')} (return true))
       (:6
         {invoke('Runner', 'AdvanceApplication', ':Now Now')}
-        (bind synced (CallFunction|SyncApplication)) (return synced))
+        (bind synced (CallFunction|SyncApplication))
+        ; A deadline never proves cancellation. Bound recovery, retaining the receipt lock.
+        (if (and {g('RunActive')} (and {prop('Runner', 'Waiting')} (>= Now (+ {prop('Runner', 'Deadline')} 10.0))))
+          (CallFunction|FailRun :Reason "action_timeout") (return false))
+        (return synced))
       (:Default {fail('invalid_phase')})))"""
 code["CancelRun"] = f"""(fn CancelRun ()
     (if (not {g('RunActive')}) (return false))

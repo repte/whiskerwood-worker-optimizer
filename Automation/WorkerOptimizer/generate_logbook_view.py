@@ -219,7 +219,7 @@ code['StatusFor'] = f'''(fn StatusFor (Index)
       (return "completed"))
     (if (or (Utilities|String|EqualExactly(String) outcome "aborted") (Utilities|String|EqualExactly(String) outcome "cancelled")) (return "aborted"))
     (bind failure {readtext('Failure','Index')})
-    {' '.join(f'(if (Utilities|String|EqualExactly(String) failure "{reason}") (return "error"))' for reason in ('invalid_plan','invalid_snapshot','invalid_phase','configuration_unavailable','builder_score_unavailable','reserve_configuration_failed','observation_unavailable'))}
+    {' '.join(f'(if (Utilities|String|EqualExactly(String) failure "{reason}") (return "error"))' for reason in ('invalid_plan','invalid_snapshot','invalid_phase','configuration_unavailable','builder_score_unavailable','reserve_configuration_failed','observation_unavailable','action_timeout'))}
     (return "problems"))'''
 code['StatusLabel']=f'''(fn StatusLabel (Index)
     (bind status (CallFunction|StatusFor :Index Index))

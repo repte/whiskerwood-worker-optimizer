@@ -1,27 +1,37 @@
 [h1]Worker Optimizer[/h1]
-[b]TL;DR:[/b] Auto-assign workers with one click, or enable a schedule at day start or every 5, 10 or 15 real-time minutes. Keep a builder reserve and choose which workplaces matter most.
+[b]Auto-assign workers to suitable jobs with one click, or let a schedule handle it.[/b]
 
-Worker Optimizer assigns eligible residents using guild specialties, productivity and your priorities. It plans minimum operating crews before adding extra workers, subject to eligibility and the available workforce.
+Match your residents' specialties to your settlement's needs, respect your priorities and keep enough workers available for construction.
 
+[h2]Features[/h2]
 [list]
-[*][b]General:[/b] set a builder reserve of 0-100 eligible residents (default: 1), choose an assignment mode and configure automatic runs.
-[*][b]Priorities:[/b] search buildings, adjust categories and override individual building types. Choose strict priorities or priority-weighted productivity.
-[*][b]Logbook:[/b] inspect run history, assignment changes and reported reasons for unfilled workplaces.
-[*][b]Protected workers:[/b] workers in paused or unsupported buildings keep their assignments.
-[*][b]17 game languages:[/b] follows the game's language automatically, with English fallback.
+[*][b]Smart assignment:[/b] considers worker specialties, productivity and job requirements.
+[*][b]Coverage first:[/b] prioritize minimum operating crews before filling extra workplaces.
+[*][b]Your priorities:[/b] searchable building categories and individual building-type overrides.
+[*][b]Builder reserve:[/b] choose how many eligible residents remain unassigned.
+[*][b]Optional automation:[/b] run at day start or every 5, 10 or 15 real-time minutes.
+[*][b]Clear logbook:[/b] timestamps, color-coded results, confirmed changes and reasons for unfilled workplaces.
+[*][b]Responsive interface:[/b] General, Priorities and Logbook, supporting all 17 game languages.
 [/list]
 
-[h2]Quick start[/h2]
-Subscribe, let Steam download, then restart the game. Remove any separate local WorkerOptimizer installation first.
-Click the [b]arrow at the lower left[/b] to run. The gear opens [b]General, Priorities and Logbook[/b]; the logbook button opens history directly. [b]Ctrl + Alt + O[/b] shows or hides the controls, and the shortcut can be changed in General.
-
+[h2]Getting started[/h2]
 [b]Recommended timing:[/b] For best results, run worker assignment calculations at night or just after a new day starts. Running them during the day may cause assignment errors.
 
-Automatic assignment is [b]off by default[/b]. Minute intervals count real time, including pauses. Assignment processing waits until the game resumes; missed intervals do not accumulate into repeated runs.
+Subscribe, wait for Steam to download the mod and restart the game. Remove any separate local installation to avoid duplicates.
 
-The start button stays locked while a request is active. Extra clicks do not restart or cancel it. There is no player cancellation or automatic undo of completed assignments.
+Click the assignment icon at the lower left to run. Open the gear for settings. [b]Ctrl + Alt + O[/b] shows or hides the controls.
 
-[b]v0.2.0:[/b] automated checks and the final in-game test passed. Large settlements, complex workplace arrangements and presentation in every language still need broader testing. Try a separate test save before using it in an established settlement.
+Automatic assignment is off by default. Minute timers include pauses; assignments wait until the simulation resumes. The start button stays locked while a request is active. Extra clicks do not restart or cancel it.
 
-[h2]Documentation, source and feedback[/h2]
+[b]Please note:[/b] paused and unsupported buildings retain their workers. The builder reserve and job requirements remain binding, so shortages can still leave buildings unstaffed. Keep a backup save.
+
+[b]v0.2.1-hotfix.1:[/b] delayed confirmations can now recover automatically. If confirmation remains missing, the run shows a failed report instead of endless loading. The button stays locked until the outstanding command is confirmed or the world is reloaded; commands are never blindly resent. In-game acceptance of this hotfix is pending. Try a separate test save first.
+
+[h2]Source, documentation and feedback[/h2]
 [url=https://github.com/repte/whiskerwood-worker-optimizer]https://github.com/repte/whiskerwood-worker-optimizer[/url]
+
+[h2]Credits[/h2]
+Unofficial community mod built with the [url=https://github.com/Whiskerwood-Modding/Whiskerwood-Project]Whiskerwood modkit[/url] by Buckminsterfullerene and Whiskerwood-Modding. Game assets belong to their respective owners.
+
+[hr][/hr]
+[url=https://duoqueue.app/en/][img]https://duoqueue.app/promo/duoq-workshop-banner-whiskerwood.png[/img][/url]

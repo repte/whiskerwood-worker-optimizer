@@ -18,6 +18,9 @@ Automatically assign **Whiskerwood** residents to suitable buildings with **one 
 
 **v0.2.0 is available on Steam Workshop and GitHub.** Subscribe on [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) for automatic updates, or download the release for manual installation.
 
+> [!NOTE]
+> **[Assignment hotfix: v0.2.1-hotfix.1](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.1-hotfix.1)** adds automatic recovery after delayed confirmations and replaces endless loading with a clear failure when confirmation remains unavailable. This is a GitHub pre-release; its in-game test and Workshop submission are pending. [Details and limits](docs/releases/0.2.1-hotfix.1.md).
+
 ## At a Glance
 
 - **Match skills to jobs:** assign residents using guild specialties, productivity and eligibility.
@@ -65,7 +68,7 @@ No Python or Unreal Editor needed to play. Use either Workshop or manual install
 Resume the simulation to process assignments. Use General to set the builder reserve, assignment mode and optional schedule; use Priorities to choose which workplaces matter most.
 
 > [!IMPORTANT]
-> **Try a separate save first.** Automated tests, UI checks, packaging and the final in-game test passed on 6 October 2026. All-language presentation, large settlements and extended sessions still need broader validation. See [changes](docs/CHANGELOG.md) and [limits](docs/GUIDE.md#verification-and-known-limits).
+> **Try a separate save first.** For **v0.2.0**, automated tests, UI checks, packaging and the final in-game test passed on 6 October 2026. The **v0.2.1-hotfix.1** in-game test is still pending. All-language presentation, large settlements and extended sessions still need broader validation. See [changes](docs/CHANGELOG.md) and [limits](docs/GUIDE.md#verification-and-known-limits).
 
 ---
 

@@ -32,6 +32,9 @@ def native_history_events(factory, world, load):
     fixture = BP.create('/Game/WorkerOptimizerEditorTests', 'BP_HistoryGroupInputs', unreal.Object.static_class())
     graph = BP.add_function_graph(fixture, 'FillGroup')
     BP.add_object_function_param(graph, 'Store', load('BP_LogbookStore'), True)
+    timeout_graph = BP.add_function_graph(fixture, 'SetTimeout')
+    BP.add_object_function_param(timeout_graph, 'Store', load('BP_LogbookStore'), True)
+    BP.add_object_function_param(timeout_graph, 'Book', load('BP_Logbook'), True)
     BP.compile_blueprint(fixture)
     with toolset_registry.tool_raising_exceptions():
         BP.write_graph_dsl(graph, '''(fn FillGroup (Store)
@@ -41,12 +44,25 @@ def native_history_events(factory, world, load):
           (Utilities|Array|Add (Class|BPLogbookStore|GetGroupCounts :self Store) 3)
           (Utilities|Array|Add (Class|BPLogbookStore|GetGroupStarts :self Store) 0)
           (Utilities|Array|Add (Class|BPLogbookStore|GetGroupIdCounts :self Store) 0))''')
+        BP.write_graph_dsl(timeout_graph, '''(fn SetTimeout (Store Book)
+          (Utilities|Array|SetArrayElem :TargetArray (Class|BPLogbookStore|GetOutcome :self Store) :Index 49 :Item "failed")
+          (Utilities|Array|SetArrayElem :TargetArray (Class|BPLogbookStore|GetFailure :self Store) :Index 49 :Item "action_timeout")
+          (Class|BPLogbook|SetHistoryRevision :self Book :HistoryRevision 2))''')
         BP.compile_blueprint(fixture, warnings_as_errors=True)
-    unreal.new_object(fixture.generated_class()).call_method('FillGroup', args=(store,))
+    group_inputs = unreal.new_object(fixture.generated_class())
+    group_inputs.call_method('FillGroup', args=(store,))
     assert probe.call_method('BuildDetails')
     group = next(item for item in probe.get_editor_property('DetailItems') if str(item.get_editor_property('Kind')) == 'group')
     assert helper.call_method('BroadcastListItemEvent', args=(probe.get_editor_property('DetailRows'), 'BP_OnItemClicked', group, True))
     assert probe.get_editor_property('SelectedGroup') == group.get_editor_property('Index'), 'Native detail click must open its historical group'
+    group_inputs.call_method('SetTimeout', args=(store, book))
+    assert probe.call_method('RefreshHistory')
+    timed_out = probe.get_editor_property('RunItems')[0]
+    assert str(timed_out.get_editor_property('Status')) == 'error', 'A terminal native timeout must be a failure, not a partial-result warning'
+    timeout_row = factory.call_method('Create', args=(world, load('WBP_HistoryRow'), None))
+    assert timeout_row.call_method('SetItem', args=(timed_out,))
+    assert str(timeout_row.get_editor_property('TitleText').get_text()) == str(texts.call_method('Text', args=('history.failed',)))
+    assert timeout_row.get_editor_property('StatusIcon').get_editor_property('brush').get_editor_property('resource_object') == unreal.load_asset('/Game/Mods/WorkerOptimizer/T_WorkerOptimizerStatusError')
     assert probe.call_method('ShutdownView')
     helper.call_method('ReleaseWidgetArtifact')
 

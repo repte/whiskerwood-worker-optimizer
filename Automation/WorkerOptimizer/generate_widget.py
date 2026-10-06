@@ -457,17 +457,20 @@ code["RefreshDisplayState"] = f"""(fn RefreshDisplayState ()
     (if (not {g('ActionEnabled')}) {put('ActionState','8')})
     (if {prop('RunActive')}
       {put('ActionEnabled', 'false')} {put('ActionState', '1')} (return true))
+    (bind terminalFailure (and {prop('RunDone')} (not {prop('RunSucceeded')})))
     (bind runner {prop('Runner')})
     (if {present('runner')}
       (if (Class|BPApplicationRunner|GetWaiting :self runner)
-        {put('ActionEnabled', 'false')} {put('ActionState', '2')} (return true)))
+        {put('ActionEnabled', 'false')}
+        (if (not terminalFailure) {put('ActionState', '2')} (return true))))
     (if {prop('ReportPending')}
-      {put('ActionEnabled', 'false')} {put('ActionState', '2')} (return true))
+      {put('ActionEnabled', 'false')}
+      (if (not terminalFailure) {put('ActionState', '2')} (return true)))
     (if {prop('RunDone')}
       {put('ActionState','7')}
       (if {prop('RunSucceeded')} {put('ActionState','3')})
       (if (== {prop('FailureCode')} "cancelled") {put('ActionState','6')})
-      {' '.join(f'(if (== '+prop('FailureCode')+f' "{reason}") '+put('ActionState','5')+')' for reason in ('invalid_plan','invalid_snapshot','invalid_phase','configuration_unavailable','builder_score_unavailable','reserve_configuration_failed','observation_unavailable'))}
+      {' '.join(f'(if (== '+prop('FailureCode')+f' "{reason}") '+put('ActionState','5')+')' for reason in ('invalid_plan','invalid_snapshot','invalid_phase','configuration_unavailable','builder_score_unavailable','reserve_configuration_failed','observation_unavailable','action_timeout'))}
       (bind report {prop('CompletedReport')})
       (if (and {present('report')} {prop('RunSucceeded')})
         (for reason (Class|BPRunReport|GetGroupReasons :self report)
