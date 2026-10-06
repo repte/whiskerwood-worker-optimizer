@@ -16,7 +16,7 @@ Automatically assign **Whiskerwood** residents to suitable buildings with **one 
 
 </div>
 
-**v0.2.0 is available on GitHub.** The final in-game test passed on 6 October 2026. The Workshop update is prepared and awaits manual submission; Workshop still provides **v0.1.1-dev**.
+**v0.2.0 is available on Steam Workshop and GitHub.** Subscribe on [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) for automatic updates, or download the release for manual installation.
 
 ## At a Glance
 
@@ -38,7 +38,7 @@ One request stays active through at most two automatic replans. The start button
 
 ## Install
 
-For **v0.2.0**, use the manual download below until the Workshop update is submitted. The existing [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) subscription currently installs **v0.1.1-dev**.
+**Recommended: [Subscribe on Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514).** Wait for Steam to finish downloading, then restart the game. Existing subscribers receive the update through Steam. Remove any separate local `WorkerOptimizer` installation before using the Workshop version.
 
 For manual installation, download **[WorkerOptimizer-v0.2.0.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.2.0/WorkerOptimizer-v0.2.0.zip)** from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0), not the source-code ZIP. Close the game and extract its `WorkerOptimizer` folder into `mods`:
 
