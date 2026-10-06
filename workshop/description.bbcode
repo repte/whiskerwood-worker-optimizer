@@ -1,34 +1,26 @@
 [h1]Worker Optimizer[/h1]
 [b]Auto-assign workers to suitable jobs with one click.[/b]
 
-Match your residents' specialties to your settlement's needs, cover minimum operating crews first and keep the saved reserve free for construction.
-
-[h2]v0.3.0-preview[/h2]
-[b]In-game validation is pending.[/b] Includes corrected job eligibility, worker-change ordering and recovery without permanently locking the icon. Test on a separate save first.
+Match your residents' specialties to your settlement's workplaces. Worker Optimizer evaluates your current workforce, staffs minimum crews first and then fills extra positions with suitable workers.
 
 [h2]Features[/h2]
 [list]
-[*][b]One manual icon:[/b] always visible; click to request assignment. No settings gear, logbook view or visibility shortcut.
-[*][b]Smart assignment:[/b] considers worker specialties, productivity and job requirements.
-[*][b]Coverage first:[/b] select feasible minimum crews before filling extra workplaces by suitability.
-[*][b]Equal priority:[/b] all active supported buildings use the same priority; older priority overrides and strict/weighted mode choices are ignored.
-[*][b]Saved builder reserve:[/b] respect the previously saved number of eligible residents to keep free, or 1 by default. This preview has no reserve editor.
-[*][b]Manual only:[/b] automatic schedules are disabled, including those saved by earlier releases.
-[*][b]Targeted moves:[/b] safely account for the optional workers affected by replacing a required worker.
+[*][b]One-click assignment:[/b] evaluate and assign your current workforce from an always-visible icon.
+[*][b]Better job matches:[/b] considers guild specialties, productivity and job requirements.
+[*][b]Minimum crews first:[/b] fill feasible minimum crews before adding suitable workers to extra positions.
+[*][b]Construction reserve:[/b] keep residents available for building, using your saved reserve or 1 resident by default.
+[*][b]Respect paused buildings:[/b] preserve their existing worker assignments.
 [/list]
 
-Earlier settings and history are retained, but cannot be edited in this preview.
-
 [h2]Getting started[/h2]
-[b]Recommended timing:[/b] For the first test, run assignment at night or just after a new day starts. Daytime behavior still needs separate validation.
-
 Subscribe and restart after Steam downloads the update. Use either Workshop or a local installation, never both.
 
-Click the lower-left assignment icon. Check results in the game's building and resident windows.
+Click the lower-left assignment icon. It shows when assignment is running and becomes available again when the run ends. Check the assigned workers in the game's building and resident windows.
 
-The icon stays busy until the run ends. Extra clicks do not cancel or restart it. Only observed changes count; confirmed changes are not automatically rolled back.
+[b]Recommended timing:[/b] Run assignment at night or just after a new day starts. Running it during the day may cause assignment errors.
 
-[b]Please note:[/b] paused and unsupported buildings retain their workers. The builder reserve and job requirements remain binding, so shortages can still leave buildings unstaffed. Keep a backup save.
+[h2]Preview information[/h2]
+[b]v0.3.0-preview[/b] targets Whiskerwood 0.7.209.0 on Windows. [b]In-game validation is pending.[/b] Try a separate save first. Assignment covers supported active workplaces; available workers, the construction reserve and job requirements determine which buildings can be staffed.
 
 [h2]Source, documentation and feedback[/h2]
 [url=https://github.com/repte/whiskerwood-worker-optimizer]https://github.com/repte/whiskerwood-worker-optimizer[/url]

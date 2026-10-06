@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="docs/assets/worker-optimizer.png" alt="Worker Optimizer: assign workers with one manual icon" width="360">
+<img src="docs/assets/worker-optimizer.png" alt="Worker Optimizer: auto-assign workers with one click" width="360">
 
 # Worker Optimizer
 
-**Assign Whiskerwood workers to suitable jobs with one click.**
+**Auto-assign your Whiskerwood workers to suitable jobs with one click.**
 
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Preview: v0.3.0-preview](https://img.shields.io/badge/preview-v0.3.0--preview-d99020)
@@ -13,17 +13,23 @@
 
 </div>
 
-**v0.3.0-preview** targets Whiskerwood **0.7.209.0 on Windows**. **The user's in-game test is pending.** The Workshop upload is prepared separately and **not submitted**; the GitHub preview does not update the live Workshop item.
-
 ## At a Glance
 
-- **One manual icon:** always visible, with no settings gear, logbook view, visibility shortcut or automatic schedule.
-- **Minimum crews first:** cover feasible operating crews before filling extra positions by guild specialty, productivity and eligibility.
-- **Equal building priority:** old category priorities, building overrides and strict/weighted choices are ignored.
-- **Saved builder reserve:** keep the existing reserve, or **1** when unset; **0** disables it. This preview has no reserve editor.
-- **Protected workers:** paused and unsupported workplaces are left alone. Native dismissal dependencies are handled explicitly.
+- **One-click assignment:** evaluate your current settlement and assign workers from an always-visible icon.
+- **Better job matches:** consider each resident's guild specialty, productivity and job requirements.
+- **Minimum crews first:** fill feasible minimum crews before adding suitable workers to extra positions.
+- **Construction reserve:** keep residents available for building, using your saved reserve or **1 resident** by default.
+- **Respect paused buildings:** preserve their existing worker assignments.
 
-The former settings and logbook code/assets remain present but inaccessible. See [preview changes and limits](docs/releases/v0.3.0-preview.md).
+## Play
+
+Click the assignment icon in the lower-left corner. Worker Optimizer evaluates the current workforce, prioritizes minimum crews and then fills extra positions. The icon shows when assignment is running and becomes available again when the run ends.
+
+> [!WARNING]
+> For best results, run worker assignment calculations at night or just after a new day starts. Running them during the day may cause assignment errors.
+
+> [!NOTE]
+> **v0.3.0-preview** targets Whiskerwood **0.7.209.0 on Windows**. In-game validation is pending, so try a separate save first. Staffing depends on available workers and job requirements. See [preview details](docs/releases/v0.3.0-preview.md).
 
 ## Install
 
@@ -37,14 +43,7 @@ Download **[WorkerOptimizer-v0.3.0-preview.zip](https://github.com/repte/whisker
 
 No Python or Unreal Editor is needed. Use either the local package or the [Workshop subscription](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514), never both. Steam installs only the version actually submitted there.
 
-## Play
-
-Click the lower-left assignment icon once. It stays busy until the request completes; extra clicks do not restart or cancel it. Only observed effects count, and a returned failure does not leave a persistent lock after result processing.
-
-> [!WARNING]
-> For best results, run worker assignment calculations at night or just after a new day starts. Running them during the day may cause assignment errors.
-
-Use a separate test save and check workers in the game's building and resident windows. Shortages and eligibility can leave buildings unstaffed; confirmed changes are not automatically rolled back. [Guide and troubleshooting](docs/GUIDE.md) · [Changelog](docs/CHANGELOG.md)
+[Guide and troubleshooting](docs/GUIDE.md) · [Changelog](docs/CHANGELOG.md)
 
 ---
 
