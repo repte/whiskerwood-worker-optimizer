@@ -18,12 +18,12 @@ existing = set(BP.list_variables(bp))
 for name, cls in (("Layout", load("BP_ProblemLayout")), ("Snapshot", load("BP_WorkforceSnapshot")),
                   ("Scorer", load("BP_JobScorer")), ("Settings", load("BP_PrioritySettings")),
                   ("Context", unreal.Object.static_class()), ("EdgeWorker", worker_class),
-                  ("EdgeTeacher", worker_class), ("EdgeBuilding", building_class)):
+                  ("EdgeTeacher", worker_class), ("ProfileTeacher", worker_class), ("EdgeBuilding", building_class)):
     if name not in existing:
         BP.add_object_variable(bp, name, cls)
 for kind, names in {
-    "bool": "MatrixActive MatrixDone MatrixSucceeded AwaitingScore SchoolEdge Strict PolicyImported GroupsConfigured OrdinaryCached",
-    "int": "Stage BuildingIndex EdgeIndex EdgeRow EdgeColumn StudentMinimum CurrentPriority",
+    "bool": "MatrixActive MatrixDone MatrixSucceeded AwaitingScore SchoolEdge Strict PolicyImported GroupsConfigured OrdinaryCached SetupActive StudentFound ProfileStarted ProfileReady",
+    "int": "Stage BuildingIndex EdgeIndex EdgeRow EdgeColumn StudentMinimum CurrentPriority StepWorkLimit LastStepWork SetupStage SetupIndex SetupRow SetupEnd ProfileIndex PolicyIndex",
     "float": "ObservedScore",
     "name": "FailureCode",
     "int[]": "Teachers Priorities FixedSlots PolicyValues",
@@ -33,6 +33,7 @@ for kind, names in {
     for name in names.split():
         if name not in existing:
             BP.add_variable(bp, name, kind.removesuffix("[]"), container_type=ContainerType.ARRAY if kind.endswith("[]") else None)
+BP.set_variable_instance_editable(bp, "StepWorkLimit", True)
 definitions = {
     "HasObject": [("Object", unreal.Object.static_class())],
     "FailMatrix": [("Reason", "name")],
@@ -45,6 +46,7 @@ definitions = {
     "ResolveProfileTeacher": [("BuildingIndex", "int")],
     "StoreEdge": [("Value", "float")],
     "PrepareEdge": [],
+    "SetupStep": [],
     "RecordScore": [("Valid", "bool"), ("Value", "float")],
     "AdvanceMatrix": [],
 }
@@ -114,7 +116,7 @@ code["HasObject"] = """(fn HasObject (Object)
     (Utilities|IsValid Object (:"Is Valid" (return true)) (:"Is Not Valid" (return false))))"""
 code["FailMatrix"] = f"""(fn FailMatrix (Reason)
     {put('MatrixActive', 'false')} {put('MatrixDone', 'true')} {put('MatrixSucceeded', 'false')}
-    {put('AwaitingScore', 'false')} {put('FailureCode', 'Reason')} {clear} (return false))"""
+    {put('AwaitingScore', 'false')} {put('SetupActive', 'false')} {put('FailureCode', 'Reason')} {clear} (return false))"""
 code["BeginMatrix"] = f"""(fn BeginMatrix (InputLayout InputScorer InputSettings InputContext InputTeachers)
     (if {g('MatrixActive')} (return false))
     {clear} {put('MatrixDone', 'false')} {put('MatrixSucceeded', 'false')} {put('AwaitingScore', 'false')}
@@ -136,33 +138,12 @@ code["BeginMatrix"] = f"""(fn BeginMatrix (InputLayout InputScorer InputSettings
     (Utilities|Array|Resize {g('TeacherGroups')} {count(sg('Buildings'))})
     (bind strict (Class|BPPrioritySettings|ReadStrictMode :self {g('Settings')} :Context {g('Context')}))
     {put('Strict', 'strict')}
-    (for b (range {count(sg('Buildings'))})
-      (bind teacher {at(g('Teachers'), 'b')})
-      (if (or (< teacher -1) (>= teacher {count(lg('ColumnActors'))})) {fail('invalid_teachers')})
-      (if {at(lg('SchoolBuildings'), 'b')}
-        (bind first {at(lg('BuildingStarts'), 'b')})
-        (if (not (Utilities|Array|IsValidIndex {lg('FixedSlots')} first)) {fail('unsupported_school')})
-        (bind fixed {at(lg('FixedSlots'), 'first')})
-        (if (and (>= fixed 0) (!= teacher fixed)) {fail('invalid_teachers')})
-        (if (and (>= teacher {count(sg('Workers'))}) (!= teacher fixed)) {fail('invalid_teachers')})
-        {unpack('WorkerAssignment', at(sg('Workforces'), 'b'), 'wf')}
-        (if (< {count('wf_m_workerSlots')} 2) {fail('unsupported_school')})
-        (Utilities|Array|SetArrayElem :TargetArray {g('Minimum')} :Index first :Item true)
-        {put('StudentMinimum', '(+ first 1)')}
-        (for r (range (+ first 1) (+ first {count('wf_m_workerSlots')}))
-          (if (>= {at(lg('FixedSlots'), 'r')} 0) {put('StudentMinimum', 'r')} (break)))
-        (Utilities|Array|SetArrayElem :TargetArray {g('Minimum')} :Index {g('StudentMinimum')} :Item true)
-        (if (and (>= teacher 0) (>= {at(lg('FixedSlots'), g('StudentMinimum'))} 0))
-          (if (< teacher {count(sg('Workers'))})
-            (bind teacherEligible (Class|BPJobEligibility|CanFillSlot :self {g('Snapshot')}
-              :Worker {at(lg('ColumnActors'), 'teacher')} :Building {at(sg('Buildings'), 'b')} :SlotIndex 0))
-            (if (not teacherEligible) {fail('ineligible_required_teacher')}))
-          (Utilities|Array|SetArrayElem :TargetArray {g('FixedSlots')} :Index first :Item teacher))
-        (else (if (!= teacher -1) {fail('invalid_teachers')}))))
-    (if (== {count(sg('Buildings'))} 0) {put('Stage', '1')})
+    {put('LastStepWork', '0')} {put('SetupActive', 'true')} {put('SetupStage', '0')} {put('SetupIndex', '0')}
+    {put('ProfileStarted', 'false')} {put('ProfileReady', 'false')} {put('PolicyIndex', '0')}
     {put('MatrixActive', 'true')} (return true))"""
+
 code["RecordDefinition"] = f"""(fn RecordDefinition (Category Found)
-    (if (or (not {g('MatrixActive')}) (!= {g('Stage')} 0)) (return false))
+    (if (or {g('SetupActive')} (or (not {g('MatrixActive')}) (!= {g('Stage')} 0))) (return false))
     (if (not Found) {fail('definition_unavailable')})
     (bind unchanged (Class|BPWorkforceSnapshot|BuildingUnchanged :self {g('Snapshot')} :Index {g('BuildingIndex')}))
     (if (not unchanged) {fail('world_changed')})
@@ -172,6 +153,7 @@ code["RecordDefinition"] = f"""(fn RecordDefinition (Category Found)
         (bind priority (Class|BPPrioritySettings|ReadPriority :self {g('Settings')} :Context {g('Context')}
           :Category Category :Type {at(sg('PrefabKeys'), g('BuildingIndex'))}))
         {put('CurrentPriority', 'priority')}))
+    (if (or (< {g('CurrentPriority')} 0) (> {g('CurrentPriority')} 4)) {fail('invalid_policy')})
     (Utilities|Array|Add {g('Priorities')} {g('CurrentPriority')})
     {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')}
     (if (>= {g('BuildingIndex')} {count(sg('Buildings'))}) {put('Stage', '1')}) (return true))"""
@@ -179,32 +161,32 @@ code["UsePolicy"] = f"""(fn UsePolicy (InputPriorities InputStrict)
     (if (or (not {g('MatrixActive')}) (or (!= {g('EdgeIndex')} 0) {g('AwaitingScore')})) (return false))
     (if (and (== {g('Stage')} 0) (> {g('BuildingIndex')} 0)) (return false))
     (if (!= {count('InputPriorities')} {count(sg('Buildings'))}) (return false))
-    (for value InputPriorities (if (or (< value 0) (> value 4)) (return false)))
-    {put('PolicyValues', 'InputPriorities')} {put('Strict', 'InputStrict')} {put('PolicyImported', 'true')}
+    {put('PolicyValues', 'InputPriorities')} {put('Strict', 'InputStrict')} {put('PolicyImported', 'true')} {put('PolicyIndex', '0')}
     (if (== {g('Stage')} 1) {put('Priorities', 'InputPriorities')}) (return true))"""
 code["UseTeacherGroups"] = f"""(fn UseTeacherGroups (InputGroups)
     (if (or (not {g('MatrixActive')}) (or {g('GroupsConfigured')} (or (> {g('BuildingIndex')} 0) (or (> {g('EdgeIndex')} 0) {g('AwaitingScore')})))) (return false))
     (if (!= {count('InputGroups')} {count(sg('Buildings'))}) (return false))
-    (for b (range {count('InputGroups')})
-      (if {at('InputGroups', 'b')}
-        (if (not {at(lg('SchoolBuildings'), 'b')}) (return false))
-        (for r (range {count(lg('RowBuildings'))})
-          (if (and (== {at(lg('RowBuildings'), 'r')} b) (>= {at(lg('FixedSlots'), 'r')} 0)) (return false)))
-        (bind teacher {at(g('Teachers'), 'b')})
-        (if (>= teacher 0)
-          (bind qualified (Class|BPJobEligibility|SameTeacherProfile :self {g('Snapshot')}
-            :Left {at(lg('ColumnActors'), 'teacher')} :Right {at(lg('ColumnActors'), 'teacher')} :Building {at(sg('Buildings'), 'b')}))
-          (if (not qualified) (return false)))))
+    (if (not {g('SetupActive')}) (return false))
+    (if (or (> {g('SetupIndex')} 0) (!= {g('SetupStage')} 0)) (return false))
     {put('TeacherGroups', 'InputGroups')} {put('GroupsConfigured', 'true')} (return true))"""
+
 code["ResolveProfileTeacher"] = f"""(fn ResolveProfileTeacher (BuildingIndex)
-    (if (not {present(g('EdgeTeacher'))}) (return false))
-    (if (!= {g('EdgeTeacher')} {g('EdgeWorker')}) (return true))
-    (for candidate {sg('Workers')}
-      (if (!= candidate {g('EdgeWorker')})
-        (bind same (Class|BPJobEligibility|SameTeacherProfile :self {g('Snapshot')}
-          :Left candidate :Right {g('EdgeTeacher')} :Building {g('EdgeBuilding')}))
-        (if same {put('EdgeTeacher', 'candidate')} (return true))))
-    (return false))"""
+    (if {g('ProfileReady')}
+      (if (not {present(g('ProfileTeacher'))}) (return false))
+      {put('EdgeTeacher', g('ProfileTeacher'))} (return true))
+    (if (not {present(g('EdgeTeacher'))}) {put('ProfileReady', 'true')} (return false))
+    (if (!= {g('EdgeTeacher')} {g('EdgeWorker')}) {put('ProfileReady', 'true')} {put('ProfileTeacher', g('EdgeTeacher'))} (return true))
+    (if (not {g('ProfileStarted')})
+      {put('ProfileStarted', 'true')} {put('ProfileIndex', '0')} (Variables|Default|SetProfileTeacher))
+    (if (>= {g('ProfileIndex')} {count(sg('Workers'))}) {put('ProfileReady', 'true')} (return false))
+    (bind candidate {at(sg('Workers'), g('ProfileIndex'))})
+    (if (!= candidate {g('EdgeWorker')})
+      (bind same (Class|BPJobEligibility|SameTeacherProfile :self {g('Snapshot')}
+        :Left candidate :Right {g('EdgeTeacher')} :Building {g('EdgeBuilding')}))
+      (if same
+        {put('ProfileTeacher', 'candidate')} {put('EdgeTeacher', 'candidate')} {put('ProfileReady', 'true')} (return true)))
+    {put('ProfileIndex', f'(+ {g("ProfileIndex")} 1)')} (return false))"""
+
 code["UseOrdinaryScores"] = f"""(fn UseOrdinaryScores (SourceLayout InputScores)
     (if (or (not {g('MatrixActive')}) (or {g('OrdinaryCached')} (or (> {g('BuildingIndex')} 0) (or (> {g('EdgeIndex')} 0) {g('AwaitingScore')})))) (return false))
     (if (!= SourceLayout {g('Layout')}) (return false))
@@ -214,9 +196,13 @@ code["StoreEdge"] = f"""(fn StoreEdge (Value)
     (if (or (not {g('MatrixActive')}) (!= {g('Stage')} 1)) (return false))
     (if (not (or (== Value -1.0) (and (>= Value 0.0) (<= Value 1000000.0)))) {fail('invalid_score')})
     (Utilities|Array|Add {g('Scores')} Value)
-    {put('EdgeIndex', f'(+ {g("EdgeIndex")} 1)')} {put('AwaitingScore', 'false')} (return true))"""
+    {put('EdgeIndex', f'(+ {g("EdgeIndex")} 1)')} {put('AwaitingScore', 'false')} {put('ProfileStarted', 'false')} {put('ProfileReady', 'false')} (return true))"""
 code["PrepareEdge"] = f"""(fn PrepareEdge ()
-    (if (or (not {g('MatrixActive')}) (or (!= {g('Stage')} 1) {g('AwaitingScore')})) (return false))
+    (if (or {g('SetupActive')} (or (not {g('MatrixActive')}) (or (!= {g('Stage')} 1) {g('AwaitingScore')}))) (return false))
+    (if (and {g('PolicyImported')} (< {g('PolicyIndex')} {count(g('PolicyValues'))}))
+      (bind value {at(g('PolicyValues'), g('PolicyIndex'))})
+      (if (or (< value 0) (> value 4)) {fail('invalid_policy')})
+      {put('PolicyIndex', f'(+ {g("PolicyIndex")} 1)')} (return true))
     (if (>= {g('EdgeIndex')} (* {count(lg('RowBuildings'))} {count(lg('ColumnActors'))}))
       {put('MatrixActive', 'false')} {put('MatrixDone', 'true')} {put('MatrixSucceeded', 'true')} (return true))
     {put('EdgeRow', f'(/ {g("EdgeIndex")} {count(lg("ColumnActors"))})')}
@@ -244,7 +230,9 @@ code["PrepareEdge"] = f"""(fn PrepareEdge ()
         (if (>= fixed 0) {store('0.0')}))
       (if (and (> slotIndex 0) {at(g('TeacherGroups'), 'buildingIndex')})
         (bind resolved (CallFunction|ResolveProfileTeacher :BuildingIndex buildingIndex))
-        (if (not resolved) {store('-1.0')}))
+        (if (not resolved)
+          (if (not {g('ProfileReady')}) (return true))
+          {store('-1.0')}))
       (else (if (>= fixed 0) {store('0.0')})))
     (if (and school (and (> slotIndex 0) (>= fixed 0)))
       {unpack('WorkerAssignment', at(sg('Workforces'), 'buildingIndex'), 'oldWf')}
@@ -266,8 +254,59 @@ code["RecordScore"] = f"""(fn RecordScore (Valid Value)
     {put('ObservedScore', 'Value')}
     (if {g('SchoolEdge')} {put('ObservedScore', f'(* Value 100.0)')})
     (bind stored (CallFunction|StoreEdge :Value {g('ObservedScore')})) (return stored))"""
+
+code["SetupStep"] = f"""(fn SetupStep ()
+    (bind b {g('SetupIndex')})
+    (if (>= b {count(sg('Buildings'))})
+      {put('SetupActive', 'false')}
+      (if (== {count(sg('Buildings'))} 0) {put('Stage', '1')}) (return true))
+    (bind first {at(lg('BuildingStarts'), 'b')})
+    (bind teacher {at(g('Teachers'), 'b')})
+    (if (== {g('SetupStage')} 0)
+      (if (or (< teacher -1) (>= teacher {count(lg('ColumnActors'))})) {fail('invalid_teachers')})
+      (if {at(lg('SchoolBuildings'), 'b')}
+        (if (not (Utilities|Array|IsValidIndex {lg('FixedSlots')} first)) {fail('unsupported_school')})
+        (bind fixed {at(lg('FixedSlots'), 'first')})
+        (if (and (>= fixed 0) (!= teacher fixed)) {fail('invalid_teachers')})
+        (if (and (>= teacher {count(sg('Workers'))}) (!= teacher fixed)) {fail('invalid_teachers')})
+        (if (and {at(g('TeacherGroups'), 'b')} (>= fixed 0)) {fail('invalid_teacher_groups')})
+        {unpack('WorkerAssignment', at(sg('Workforces'), 'b'), 'wf')}
+        (if (< {count('wf_m_workerSlots')} 2) {fail('unsupported_school')})
+        (Utilities|Array|SetArrayElem :TargetArray {g('Minimum')} :Index first :Item true)
+        {put('StudentMinimum', '(+ first 1)')} {put('StudentFound', 'false')}
+        {put('SetupRow', '(+ first 1)')} {put('SetupEnd', f'(+ first {count("wf_m_workerSlots")})')}
+        {put('SetupStage', '1')} (return true))
+      (if (!= teacher -1) {fail('invalid_teachers')})
+      (if {at(g('TeacherGroups'), 'b')} {fail('invalid_teacher_groups')})
+      {put('SetupIndex', '(+ b 1)')} (return true))
+    (if (< {g('SetupRow')} {g('SetupEnd')})
+      (if (>= {at(lg('FixedSlots'), g('SetupRow'))} 0)
+        (if {at(g('TeacherGroups'), 'b')} {fail('invalid_teacher_groups')})
+        (if (not {g('StudentFound')})
+          {put('StudentMinimum', g('SetupRow'))} {put('StudentFound', 'true')}))
+      {put('SetupRow', f'(+ {g("SetupRow")} 1)')} (return true))
+    (Utilities|Array|SetArrayElem :TargetArray {g('Minimum')} :Index {g('StudentMinimum')} :Item true)
+    (if (and (>= teacher 0) (>= {at(lg('FixedSlots'), g('StudentMinimum'))} 0))
+      (if (< teacher {count(sg('Workers'))})
+        (bind teacherEligible (Class|BPJobEligibility|CanFillSlot :self {g('Snapshot')}
+          :Worker {at(lg('ColumnActors'), 'teacher')} :Building {at(sg('Buildings'), 'b')} :SlotIndex 0))
+        (if (not teacherEligible) {fail('ineligible_required_teacher')}))
+      (Utilities|Array|SetArrayElem :TargetArray {g('FixedSlots')} :Index first :Item teacher))
+    (if (and {at(g('TeacherGroups'), 'b')} (>= teacher 0))
+      (bind qualified (Class|BPJobEligibility|SameTeacherProfile :self {g('Snapshot')}
+        :Left {at(lg('ColumnActors'), 'teacher')} :Right {at(lg('ColumnActors'), 'teacher')} :Building {at(sg('Buildings'), 'b')}))
+      (if (not qualified) {fail('invalid_teacher_groups')}))
+    {put('SetupStage', '0')} {put('SetupIndex', '(+ b 1)')} (return true))"""
+
 code["AdvanceMatrix"] = f"""(fn AdvanceMatrix ()
-    (if (not {g('MatrixActive')}) (return false))
+    {put('LastStepWork', '0')} (if (not {g('MatrixActive')}) (return false))
+    (if (<= {g('StepWorkLimit')} 0) {fail('invalid_step_limit')})
+    {put('LastStepWork', '1')}
+    (if (and {g('PolicyImported')} (< {g('PolicyIndex')} {count(g('PolicyValues'))}))
+      (bind value {at(g('PolicyValues'), g('PolicyIndex'))})
+      (if (or (< value 0) (> value 4)) {fail('invalid_policy')})
+      {put('PolicyIndex', f'(+ {g("PolicyIndex")} 1)')} (return true))
+    (if {g('SetupActive')} (bind setup (CallFunction|SetupStep)) (return setup))
     (if (== {g('Stage')} 0)
       (bind (definition found) (Class|GridActor|GetGridActorDefinition :self {at(sg('Buildings'), g('BuildingIndex'))}))
       {unpack('GridActorDefinitionMasterSyncFormat', 'definition', 'd')}
@@ -298,6 +337,7 @@ with toolset_registry.tool_raising_exceptions():
         unreal.log("WO_SCORE_MATRIX_WRITE " + name)
         BP.write_graph_dsl(graphs[name], source)
     BP.compile_blueprint(bp, warnings_as_errors=True)
+    unreal.get_default_object(bp.generated_class()).set_editor_property("StepWorkLimit", 64)
     assert unreal.EditorAssetLibrary.save_loaded_asset(bp)
     Path(unreal.Paths.project_saved_dir(), "WorkerOptimizer-ScoreMatrix.dsl").write_text("\n\n".join(code.values()), encoding="utf-8")
 unreal.log("WO_SCORE_MATRIX_GENERATED")

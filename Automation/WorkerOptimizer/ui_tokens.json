@@ -1,0 +1,294 @@
+{
+  "einheit": "Slate Unit (SU), 1 SU = 1 px bei UI-Skalierung 100 %",
+  "farben": {
+    "panel": {
+      "hex": "#1C1915",
+      "verwendung": "Fensterfläche",
+      "name": "Fenster"
+    },
+    "head": {
+      "hex": "#221E19",
+      "verwendung": "Titel, Reiter, Tabellenkopf",
+      "name": "Kopf"
+    },
+    "cat": {
+      "hex": "#211D18",
+      "verwendung": "Kategoriezeile",
+      "name": "Kategorie"
+    },
+    "surface": {
+      "hex": "#2A251E",
+      "verwendung": "Tasten, Tastenkappen",
+      "name": "Fläche"
+    },
+    "hover": {
+      "hex": "#312B22",
+      "verwendung": "Hover-Fläche",
+      "name": "Hover"
+    },
+    "sunken": {
+      "hex": "#14120F",
+      "verwendung": "Eingabefelder, Gedrückt",
+      "name": "Vertieft"
+    },
+    "sel": {
+      "hex": "#3A3122",
+      "verwendung": "Ausgewählte Zeile, Segment, Chip",
+      "name": "Ausgewählt"
+    },
+    "line": {
+      "hex": "#3B342A",
+      "verwendung": "Trenner",
+      "name": "Linie"
+    },
+    "line2": {
+      "hex": "#5C5040",
+      "verwendung": "Rahmen, Scroll-Daumen",
+      "name": "Linie stark"
+    },
+    "line3": {
+      "hex": "#7A6B55",
+      "verwendung": "Rahmen bei Hover",
+      "name": "Linie Hover"
+    },
+    "text": {
+      "hex": "#EEE7D9",
+      "verwendung": "Primärtext",
+      "name": "Text"
+    },
+    "text2": {
+      "hex": "#BDB29E",
+      "verwendung": "Sekundärtext, inaktive Reiter",
+      "name": "Text 2"
+    },
+    "text3": {
+      "hex": "#988C78",
+      "verwendung": "Hilfetext, Spaltenköpfe",
+      "name": "Text 3"
+    },
+    "gold": {
+      "hex": "#C9A257",
+      "verwendung": "Akzent, Auswahl, Logo",
+      "name": "Gold"
+    },
+    "goldhi": {
+      "hex": "#DDB96D",
+      "verwendung": "Eigene Priorität, Treffer",
+      "name": "Gold hell"
+    },
+    "goldlo": {
+      "hex": "#A8843F",
+      "verwendung": "Gedrückt, Auswahlrahmen",
+      "name": "Gold dunkel"
+    },
+    "focus": {
+      "hex": "#F3D88A",
+      "verwendung": "Fokusrahmen",
+      "name": "Fokus"
+    },
+    "ok": {
+      "hex": "#74C27A",
+      "verwendung": "Abgeschlossen + Häkchen",
+      "name": "Erfolg"
+    },
+    "warn": {
+      "hex": "#F0A43A",
+      "verwendung": "Probleme + Dreieck",
+      "name": "Warnung"
+    },
+    "err": {
+      "hex": "#EC7A6A",
+      "verwendung": "Technischer Fehler + Achteck",
+      "name": "Fehler"
+    },
+    "run": {
+      "hex": "#AEB9C4",
+      "verwendung": "Läuft + Ladeindikator",
+      "name": "Neutral"
+    },
+    "abort": {
+      "hex": "#A39A8C",
+      "verwendung": "Alte Einträge + Kreis mit Strich",
+      "name": "Abgebrochen"
+    },
+    "dtext": {
+      "hex": "#6F665A",
+      "verwendung": "Text und Symbole",
+      "name": "Deaktiviert Text"
+    },
+    "dbg": {
+      "hex": "#1F1C18",
+      "verwendung": "Fläche",
+      "name": "Deaktiviert Fläche"
+    }
+  },
+  "statusflaechen": {
+    "okbg": "#1F2B20",
+    "warnbg": "#35281A",
+    "errbg": "#38211D",
+    "runbg": "#23272B",
+    "abortbg": "#27241F"
+  },
+  "weitere_farben": {
+    "game": "#56623F",
+    "hud": "#15120E",
+    "dline": "#2E2923",
+    "tip": "#0F0D0B",
+    "ink": "#14120F"
+  },
+  "typografie": [
+    {
+      "rolle": "Fenstertitel",
+      "familie": "Noto Serif",
+      "groesse": 20,
+      "zeilenhoehe": 28,
+      "gewicht": 600
+    },
+    {
+      "rolle": "Abschnitt, Feldname",
+      "familie": "Noto Sans",
+      "groesse": 16,
+      "zeilenhoehe": 24,
+      "gewicht": 600
+    },
+    {
+      "rolle": "Kennzahl",
+      "familie": "Noto Sans",
+      "groesse": 22,
+      "zeilenhoehe": 28,
+      "gewicht": 600
+    },
+    {
+      "rolle": "Wirksame Priorität",
+      "familie": "Noto Sans",
+      "groesse": 17,
+      "zeilenhoehe": 24,
+      "gewicht": 600
+    },
+    {
+      "rolle": "Text, Bedienelement",
+      "familie": "Noto Sans",
+      "groesse": 15,
+      "zeilenhoehe": 22,
+      "gewicht": 400
+    },
+    {
+      "rolle": "Klein, Hilfe, Spaltenkopf",
+      "familie": "Noto Sans",
+      "groesse": 13,
+      "zeilenhoehe": 18,
+      "gewicht": 400
+    }
+  ],
+  "abstaende": [
+    4,
+    8,
+    12,
+    16,
+    24,
+    32
+  ],
+  "radius": {
+    "steuerelement": 4,
+    "fenster": 6,
+    "statusmarke": 4,
+    "lauf_hinweis": 14
+  },
+  "fokus": {
+    "farbe": "#F3D88A",
+    "breite": 2,
+    "abstand": 2
+  },
+  "fenster": {
+    "breite_anteil": 0.7,
+    "breite_min": 680,
+    "breite_max": 1400,
+    "hoehe_max": 1040,
+    "rand": 24,
+    "rand_klein": 12,
+    "rand_klein_unter_viewporthoehe": 700,
+    "spiel_hud_hoehe_annahme": 48,
+    "breakpoint_inhaltsbreite": 920,
+    "kompakter_kopf_unter_fensterhoehe": 560
+  },
+  "zeilen": {
+    "titel": 52,
+    "reiter": 44,
+    "werkzeugleiste_min": 52,
+    "tabellenkopf": 32,
+    "zeile_min": 40,
+    "kategorie_min": 44
+  },
+  "spalten": {
+    "prioritaeten": {
+      "gebaeudetyp": "flex",
+      "prioritaet": 540,
+      "wirksam": 112,
+      "einzug": 32
+    },
+    "protokoll": {
+      "ergebnis": 136,
+      "zeitpunkt": 140,
+      "ausloeser": "flex",
+      "aenderungen": 84,
+      "liste_anteil_breit": 0.46,
+      "liste_min": 560,
+      "liste_max": 680,
+      "liste_schmal_hoehe": 192
+    }
+  },
+  "steuerelemente": {
+    "stepper": {
+      "hoehe": 32,
+      "taste": 32,
+      "wertfeld": 48,
+      "gesamt": 120
+    },
+    "segment_chip": {
+      "hoehe": 32,
+      "innen": 12,
+      "radio": 16
+    },
+    "suchfeld": {
+      "hoehe": 36,
+      "breite_min": 280,
+      "breite_max": 420
+    },
+    "scrollleiste": {
+      "breite": 6,
+      "hover": 8
+    }
+  },
+  "hud": {
+    "start": 40,
+    "start_symbol": 24,
+    "neben": 32,
+    "neben_symbol": 18,
+    "abstand": 4,
+    "rahmen": 3,
+    "statusmarke": 16,
+    "lauf_hinweis_hoehe": 28
+  },
+  "status": {
+    "abgeschlossen": {
+      "farbe": "#74C27A",
+      "form": "Kreis mit Häkchen"
+    },
+    "probleme": {
+      "farbe": "#F0A43A",
+      "form": "Dreieck mit Ausrufezeichen"
+    },
+    "fehler": {
+      "farbe": "#EC7A6A",
+      "form": "Achteck mit Kreuz"
+    },
+    "laeuft": {
+      "farbe": "#AEB9C4",
+      "form": "Ladeindikator (Kreisbogen)"
+    },
+    "abgebrochen": {
+      "farbe": "#A39A8C",
+      "form": "Kreis mit Schrägstrich"
+    }
+  }
+}

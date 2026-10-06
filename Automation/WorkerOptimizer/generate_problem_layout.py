@@ -20,11 +20,11 @@ for name in ("ColumnActors", "SeenOccupants"):
     if name not in existing:
         BP.add_object_variable(bp, name, worker_class, container_type=ContainerType.ARRAY)
 for kind, names in {
-    "bool": "LayoutActive LayoutDone LayoutSucceeded AnyRequired HasFixed",
+    "bool": "LayoutActive LayoutDone LayoutSucceeded AnyRequired HasFixed ColumnsReady",
     "int": "BuildingIndex SlotIndex WorkerIndex MinimumFallbackRow",
     "name": "FailureCode",
     "int[]": "RowBuildings RowSlots Incumbents FixedSlots ColumnWorkers BuildingStarts",
-    "bool[]": "Minimum SchoolBuildings",
+    "bool[]": "Minimum SchoolBuildings FlexibleMinimumBuildings",
 }.items():
     for name in names.split():
         if name not in existing:
@@ -89,7 +89,7 @@ def fail(reason):
     return f'(CallFunction|FailLayout :Reason "{reason}") (return false)'
 
 
-arrays = "RowBuildings RowSlots Incumbents FixedSlots ColumnWorkers BuildingStarts Minimum SchoolBuildings ColumnActors SeenOccupants".split()
+arrays = "RowBuildings RowSlots Incumbents FixedSlots ColumnWorkers BuildingStarts Minimum SchoolBuildings FlexibleMinimumBuildings ColumnActors SeenOccupants".split()
 clear = " ".join(f"(Utilities|Array|Clear {g(name)})" for name in arrays)
 shape_checks = []
 for primary, companions in (("Buildings", ("Workforces", "PrefabKeys", "BuildingIds")),
@@ -107,12 +107,12 @@ code["BeginLayout"] = f"""(fn BeginLayout (InputSnapshot)
     (if {g('LayoutActive')} (return false))
     {clear} {put('LayoutDone', 'false')} {put('LayoutSucceeded', 'false')}
     {put('FailureCode', '"None"')} {put('BuildingIndex', '0')} {put('SlotIndex', '0')} {put('WorkerIndex', '0')}
+    {put('ColumnsReady', 'false')}
     (if (not {present('InputSnapshot')}) {fail('invalid_snapshot')})
     (if (not (and {sg('SnapshotValid', 'InputSnapshot')} {sg('CaptureDone', 'InputSnapshot')})) {fail('invalid_snapshot')})
     (if (or (> {count(sg('Buildings', 'InputSnapshot'))} 10000) (> {count(sg('Workers', 'InputSnapshot'))} 10000)) {fail('too_large')})
     {' '.join(shape_checks)}
     {put('Snapshot', 'InputSnapshot')} {put('ColumnActors', sg('Workers'))}
-    (for w (range {count(sg('Workers'))}) {add('ColumnWorkers', 'w')})
     {put('LayoutActive', 'true')} (return true))"""
 code["CaptureLayoutRow"] = f"""(fn CaptureLayoutRow ()
     (if (>= {count(g('RowBuildings'))} 10000) {fail('too_large')})
@@ -139,6 +139,10 @@ code["AdvanceLayout"] = f"""(fn AdvanceLayout ()
     (if (not {g('LayoutActive')}) (return false))
     (if (not {present(g('Snapshot'))}) {fail('invalid_snapshot')})
     (if (not (and {sg('SnapshotValid')} {sg('CaptureDone')})) {fail('invalid_snapshot')})
+    (if (not {g('ColumnsReady')})
+      (if (< {g('WorkerIndex')} {count(sg('Workers'))})
+        {add('ColumnWorkers', g('WorkerIndex'))} {put('WorkerIndex', f'(+ {g("WorkerIndex")} 1)')}
+        (else {put('ColumnsReady', 'true')} {put('WorkerIndex', '0')})) (return true))
     (if (< {g('BuildingIndex')} {count(sg('Buildings'))})
       (if (== {g('SlotIndex')} 0)
         (bind unchanged (Class|BPWorkforceSnapshot|BuildingUnchanged :self {g('Snapshot')} :Index {g('BuildingIndex')}))
@@ -146,11 +150,13 @@ code["AdvanceLayout"] = f"""(fn AdvanceLayout ()
         {add('BuildingStarts', count(g('RowBuildings')))}
         {put('MinimumFallbackRow', count(g('RowBuildings')))} {put('AnyRequired', 'false')} {put('HasFixed', 'false')}
         (bind school (Actor|GetComponentbyClass :self {at(sg('Buildings'), g('BuildingIndex'))} :ComponentClass "/Script/ProjectArco.School"))
-        {add('SchoolBuildings', present('school'))})
+        {add('SchoolBuildings', present('school'))} {add('FlexibleMinimumBuildings', 'false')})
       {unpack('WorkerAssignment', at(sg('Workforces'), g('BuildingIndex')), 'wf')}
       (if (>= {g('SlotIndex')} {count('wf_m_workerSlots')})
         (if (and (not {g('AnyRequired')}) (> {count('wf_m_workerSlots')} 0))
-          (Utilities|Array|SetArrayElem :TargetArray {g('Minimum')} :Index {g('MinimumFallbackRow')} :Item true))
+          (if {at(g('SchoolBuildings'), g('BuildingIndex'))}
+            (Utilities|Array|SetArrayElem :TargetArray {g('Minimum')} :Index {g('MinimumFallbackRow')} :Item true)
+            (else (Utilities|Array|SetArrayElem :TargetArray {g('FlexibleMinimumBuildings')} :Index {g('BuildingIndex')} :Item true))))
         {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')} {put('SlotIndex', '0')} (return true))
       (bind captured (CallFunction|CaptureLayoutRow))
       (if (not captured) (return false))

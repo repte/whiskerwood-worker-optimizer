@@ -1,16 +1,32 @@
 """Behavior tests for the compiled staffing policy and its real solver."""
 
 import itertools
+import math
 import random
 import time
 
 import unreal
 
 
-def plan(scores, buildings, minimum, priorities, strict=False, fixed=None):
+def finish(planner, rows, workers, buildings, strict):
+    passes = 6 if strict else 2
+    width = 2 * rows + workers  # Explicit local empties plus disabled universal dummies.
+    work_bound = 100 + 10 * (rows + workers + buildings)
+    work_bound += rows * (rows + 1) * (workers + 5) + buildings * (buildings + rows)
+    work_bound += passes * (2 * rows * (workers + rows) + rows * (rows + 1) * (3 * width + 10) + 20 * (rows + workers + buildings))
+    for _ in range(math.ceil(work_bound / max(1, planner.get_editor_property("StepWorkLimit"))) + 1):
+        if planner.get_editor_property("PlanDone"):
+            break
+        planner.call_method("AdvancePlan")
+        assert 0 <= planner.get_editor_property("LastStepWork") <= planner.get_editor_property("StepWorkLimit")
+    assert planner.get_editor_property("PlanDone"), "Planner exceeded primitive-work completion bound"
+
+
+def plan(scores, buildings, minimum, priorities, strict=False, fixed=None, step_limit=64):
     cls = unreal.load_class(None, "/Game/Mods/WorkerOptimizer/BP_StaffingPlanner.BP_StaffingPlanner_C")
     assert cls is not None, "Production staffing planner does not exist"
     planner = unreal.new_object(cls)
+    planner.set_editor_property("StepWorkLimit", step_limit)
     workers = len(scores[0]) if scores else 0
     planner.call_method("StartPlan", args=(
         [float(value) for row in scores for value in row], buildings, minimum,
@@ -19,15 +35,15 @@ def plan(scores, buildings, minimum, priorities, strict=False, fixed=None):
     if fixed is not None:
         configured = planner.call_method("RequireFixedSlots", args=(fixed,))
         assert configured[-1] if isinstance(configured, tuple) else configured
-    for _ in range(20000):
-        if planner.get_editor_property("PlanDone"):
-            break
-        planner.call_method("AdvancePlan")
+    finish(planner, len(buildings), workers, len(priorities), strict)
     assert planner.get_editor_property("PlanDone"), "Planner did not finish"
     assert planner.get_editor_property("PlanSucceeded"), (
         f"Planner rejected a valid input: state={planner.get_editor_property('State')}, "
         f"tier={planner.get_editor_property('Tier')}, scores={scores}, priorities={priorities}, "
-        f"result={list(planner.get_editor_property('Assignment'))}"
+        f"result={list(planner.get_editor_property('Assignment'))}, "
+        f"accepted={list(planner.get_editor_property('Accepted'))}, fixed={list(planner.get_editor_property('FixedSlots'))}, "
+        f"allowed={list(planner.get_editor_property('AllowedEdges'))}, empty={list(planner.get_editor_property('AllowedEmpty'))}, "
+        f"cursor={planner.get_editor_property('PolicyCursor')}"
     )
     result = list(planner.get_editor_property("PlanAssignment"))
     assigned = [worker for worker in result if worker >= 0]
@@ -150,24 +166,25 @@ def run():
     invalid = unreal.new_object(cls)
     for fixed in ([0], [0, 0], [-2, -1], [2, -1]):
         invalid.call_method("StartPlan", args=([1.0] * 4, [0, 1], [True, True], [2, 2], 2, False))
-        assert not invalid.call_method("RequireFixedSlots", args=(fixed,))[-1]
+        accepted = invalid.call_method("RequireFixedSlots", args=(fixed,))[-1]
+        assert accepted == (len(fixed) == 2)
+        finish(invalid, 2, 2, 2, False)
         assert invalid.get_editor_property("PlanDone") and not invalid.get_editor_property("PlanSucceeded")
     invalid.call_method("StartPlan", args=([-1.0, 1.0], [0], [True], [2], 2, False))
-    assert not invalid.call_method("RequireFixedSlots", args=([0],))[-1]
+    assert invalid.call_method("RequireFixedSlots", args=([0],))[-1]
+    finish(invalid, 1, 2, 1, False)
     assert not invalid.get_editor_property("PlanSucceeded")
     invalid.call_method("StartPlan", args=([1.0, 3.0, 3.0, 1.0], [0, 1], [True, True], [2, 2], 2, True))
     assert invalid.call_method("RequireFixedSlots", args=([0, -1],))[-1]
     assert not invalid.call_method("RequireFixedSlots", args=([-1, 0],))[-1], "Cannot replace constraints mid-run"
-    while not invalid.get_editor_property("PlanDone"):
-        invalid.call_method("AdvancePlan")
+    finish(invalid, 2, 2, 2, True)
     assert invalid.get_editor_property("PlanSucceeded")
     assert list(invalid.get_editor_property("PlanAssignment")) == [0, 1]
     # Reusing the planner clears every fixed constraint.
     invalid.call_method("StartPlan", args=([1.0, 3.0, 3.0, 1.0], [0, 1], [True, True], [2, 2], 2, True))
     invalid.call_method("AdvancePlan")
     assert not invalid.call_method("RequireFixedSlots", args=([0, -1],))[-1]
-    while not invalid.get_editor_property("PlanDone"):
-        invalid.call_method("AdvancePlan")
+    finish(invalid, 2, 2, 2, True)
     assert invalid.get_editor_property("PlanSucceeded")
     assert list(invalid.get_editor_property("PlanAssignment")) == [1, 0]
     for args in (([1.0], [0], [False], [2], 1, False),
@@ -175,6 +192,7 @@ def run():
                  ([1.0], [0], [True], [5], 1, False),
                  ([1.0], [0], [True], [2], 2, False)):
         invalid.call_method("StartPlan", args=args)
+        finish(invalid, 1, args[4], 1, False)
         assert invalid.get_editor_property("PlanDone") and not invalid.get_editor_property("PlanSucceeded")
     start = time.perf_counter()
     size = 200
@@ -187,4 +205,5 @@ def run():
     unreal.log("WO_PLANNER_TESTS_PASS: coverage, complete crews, shortages, strict/weighted, 180 independent oracle cases including locked incumbents, invalid fixed constraints and reuse")
 
 
-run()
+if __name__ == "__main__":
+    run()

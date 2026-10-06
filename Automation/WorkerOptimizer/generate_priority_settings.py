@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import json
+import os
 
 import unreal
 import toolset_registry
@@ -17,16 +18,25 @@ if "OptionValues" not in BP.list_variables(bp):
 for name in ("RegisteredCategories", "RegisteredTypes"):
     if name not in BP.list_variables(bp):
         BP.add_variable(bp, name, "name", container_type=ContainerType.ARRAY)
+for kind, names in {"name[]": "KnownCategories KnownTypes KnownTypeCategories FrozenCategories FrozenTypes", "string[]": "KnownTypeStringKeys", "int[]": "FrozenCategoryValues FrozenTypeValues", "bool": "PolicyKeysReady PolicyFrozen FrozenStrict", "int": "FrozenReserve"}.items():
+    for name in names.split():
+        if name not in BP.list_variables(bp):
+            BP.add_variable(bp, name, kind.removesuffix("[]"), container_type=ContainerType.ARRAY if kind.endswith("[]") else None)
 catalog = json.loads(Path(__file__).with_name("translations.json").read_text(encoding="utf-8"))
 languages, translations = catalog["languages"], catalog["strings"]
+ui_catalog = json.loads(Path(__file__).with_name("ui_translations.json").read_text(encoding="utf-8"))
+assert ui_catalog["languages"] == languages
+translations.update(ui_catalog["strings"])
 # Native setting widgets keep localization keys live when the player changes language.
 for key, row in list(translations.items()):
-    if key in ("mode", "reserve"):
+    if key in ("mode", "reserve", "auto_assignment"):
         translations["title." + key] = ["Worker Optimizer: " + value for value in row]
     elif key.startswith("category."):
         translations["title." + key] = ["Worker Optimizer: " + translations["category"][i] + " - " + value for i, value in enumerate(row)]
-assert languages == ["en", "de", "pl", "fr", "nl"]
-assert all(len(row) == 5 and all(isinstance(text, str) and text for text in row) for row in translations.values())
+assert languages == json.loads(Path(__file__).with_name("game_languages.json").read_text(encoding="utf-8"))["languages"]
+stride = len(languages)
+assert stride == 17
+assert all(len(row) == stride and all(isinstance(text, str) and text.strip() for text in row) for row in translations.values())
 for name in ("TextKeys", "TextValues", "Languages"):
     if name not in BP.list_variables(bp):
         BP.add_variable(bp, name, "string", container_type=ContainerType.ARRAY)
@@ -57,6 +67,15 @@ definitions = {
     "MigrateOption": ([("Context", obj), ("OptionId", "string"), ("Mode", "bool"), ("AllowInherit", "bool")], [("Result", "bool")]),
     "ParseReserve": ([("Value", "string")], [("Count", "int")]),
     "ReadReserve": ([("Context", obj)], [("Count", "int")]),
+    "ReadOption": ([("Context", obj), ("OptionId", "string"), ("Fallback", "string")], [("Value", "string")]),
+    "WriteOption": ([("Context", obj), ("OptionId", "string"), ("Value", "string")], [("Result", "bool")]),
+    "BeginPolicyKeys": ([], [("Result", "bool")]),
+    "AddPolicyKey": ([("Type", "name"), ("Category", "name")], [("Result", "bool")]),
+    "FinishPolicyKeys": ([], [("Result", "bool")]),
+    "CapturePolicy": ([("Context", obj)], [("Result", "bool")]),
+    "ReleasePolicy": ([], [("Result", "bool")]),
+    "ParseAutoMode": ([("Value", "string")], [("Mode", "name")]),
+    "ReadAutoMode": ([("Context", obj)], [("Mode", "name")]),
 }
 graphs = {}
 existing = {str(g.get_name()) for g in BP.list_graphs(bp)}
@@ -108,12 +127,79 @@ def text(key):
 def literal(value):
     return json.dumps(value, ensure_ascii=False)
 
+
+def put(name, value):
+    return f"(Variables|Default|Set{name} {value})"
+
+
+code["ReadOption"] = f"""(fn ReadOption (Context OptionId Fallback)
+    (if (not (CallFunction|HasObject :Object Context)) (return Fallback))
+    {api_guard('Fallback')}
+    (bind value ({read} :self api :WorldContext Context :optionId OptionId :fallbackValue Fallback))
+    (return value))"""
+code["BeginPolicyKeys"] = f"""(fn BeginPolicyKeys ()
+    (if {arr('PolicyFrozen')} (return false))
+    {put('PolicyKeysReady', 'false')}
+    (Utilities|Array|Clear {arr('KnownCategories')}) (Utilities|Array|Clear {arr('KnownTypes')})
+    (Utilities|Array|Clear {arr('KnownTypeCategories')}) (Utilities|Array|Clear {arr('KnownTypeStringKeys')}) (return true))"""
+code["WriteOption"] = """(fn WriteOption (Context OptionId Value)
+    (if (not (CallFunction|HasObject :Object Context)) (return false))
+    (if (not (Utilities|String|StartsWith :SourceString OptionId :InPrefix "WorkerOptimizer.")) (return false))
+    (bind manager (Class|Backbone|GetOptionManager :WorldContext Context))
+    (if (not (CallFunction|HasObject :Object manager)) (return false))
+    (Class|OptionManager|SetValue :self manager :optionId OptionId :Value Value)
+    (bind actual (CallFunction|ReadOption :Context Context :OptionId OptionId :Fallback ""))
+    (return (Utilities|String|EqualExactly(String) actual Value)))"""
+code["AddPolicyKey"] = f"""(fn AddPolicyKey (Type Category)
+    (if (== Type "None") (return false))
+    (if (>= (Utilities|Array|Length {arr('KnownTypes')}) 10000)
+        (if (not (Utilities|Array|ContainsItem {arr('KnownTypes')} Type)) (return false)))
+    (if (and (!= Category "None") (>= (Utilities|Array|Length {arr('KnownCategories')}) 10000))
+        (if (not (Utilities|Array|ContainsItem {arr('KnownCategories')} Category)) (return false)))
+    (if (not (Utilities|Array|ContainsItem {arr('KnownTypes')} Type))
+      (Utilities|Array|Add {arr('KnownTypes')} Type)
+      (Utilities|Array|Add {arr('KnownTypeCategories')} Category)
+      (Utilities|Array|Add {arr('KnownTypeStringKeys')} (Utilities|String|ToString(Name) Type)))
+    (if (!= Category "None") (Utilities|Array|AddUnique {arr('KnownCategories')} Category)) (return true))"""
+code["FinishPolicyKeys"] = f"""(fn FinishPolicyKeys () {put('PolicyKeysReady', 'true')} (return true))"""
+code["ReleasePolicy"] = f"""(fn ReleasePolicy ()
+    {put('PolicyFrozen', 'false')}
+    {' '.join(f'(Utilities|Array|Clear {arr(n)})' for n in ('FrozenCategories', 'FrozenTypes', 'FrozenCategoryValues', 'FrozenTypeValues'))}
+    (return true))"""
+code["CapturePolicy"] = f"""(fn CapturePolicy (Context)
+    (if (or {arr('PolicyFrozen')} (not {arr('PolicyKeysReady')})) (return false))
+    (if (not (CallFunction|HasObject :Object Context)) (return false))
+    (CallFunction|ReleasePolicy)
+    {put('FrozenCategories', arr('KnownCategories'))} {put('FrozenTypes', arr('KnownTypes'))}
+    (for category {arr('FrozenCategories')}
+      (bind value (CallFunction|ReadOption :Context Context :OptionId (CallFunction|CategoryOptionId :Key category) :Fallback "2"))
+      (bind (valid priority) (CallFunction|ParsePriority :Value value :AllowInherit false))
+      (Utilities|Array|Add {arr('FrozenCategoryValues')} (select valid priority 2)))
+    (for type {arr('FrozenTypes')}
+      (bind value (CallFunction|ReadOption :Context Context :OptionId (CallFunction|TypeOptionId :Key type) :Fallback "inherit"))
+      (bind (valid priority) (CallFunction|ParsePriority :Value value :AllowInherit true))
+      (Utilities|Array|Add {arr('FrozenTypeValues')} (select valid priority -1)))
+    (bind mode (CallFunction|ReadOption :Context Context :OptionId "WorkerOptimizer.mode" :Fallback "Strict"))
+    (bind strict (CallFunction|IsStrictValue :Value mode)) {put('FrozenStrict', 'strict')}
+    (bind reserve (CallFunction|ReadOption :Context Context :OptionId "WorkerOptimizer.reserve" :Fallback "1"))
+    (bind count (CallFunction|ParseReserve :Value reserve)) {put('FrozenReserve', 'count')}
+    {put('PolicyFrozen', 'true')} (return true))"""
+
+exact_locales, prefix_locales = [], []
+for i, lang in enumerate(languages):
+    alias = lang.replace("-", "_")
+    value = item("TextValues", f"(+ (* index {stride}) {i})")
+    exact_locales.append(f'(if (or (Utilities|String|EqualExactly(String) normalized "{lang}") (Utilities|String|EqualExactly(String) normalized "{alias}")) (return {value}))')
+for lang in sorted(languages, key=len, reverse=True):
+    alias = lang.replace("-", "_")
+    value = item("TextValues", f"(+ (* index {stride}) {languages.index(lang)})")
+    prefix_locales.append(f'(if (or (Utilities|String|StartsWith :SourceString normalized :InPrefix "{lang}-") (Utilities|String|StartsWith :SourceString normalized :InPrefix "{alias}_")) (return {value}))')
 code["Localize"] = f"""(fn Localize (Key Language)
     (bind index (Utilities|Array|FindItem {arr('TextKeys')} Key))
     (if (< index 0) (return Key))
     (bind normalized (Utilities|String|ToLower Language))
-    {''.join(f'(if (or (Utilities|String|EqualExactly(String) normalized "{lang}") (or (Utilities|String|StartsWith :SourceString normalized :InPrefix "{lang}-") (Utilities|String|StartsWith :SourceString normalized :InPrefix "{lang}_"))) (return {item("TextValues", f"(+ (* index 5) {i})")}))' for i, lang in enumerate(languages))}
-    (return {item('TextValues', '(* index 5)')}))"""
+    {''.join(exact_locales)} {''.join(prefix_locales)}
+    (return {item('TextValues', f'(* index {stride})')}))"""
 code["Text"] = """(fn Text (Key)
     (bind manager (Class|Backbone|GetLocManager :WorldContext self))
     (if (CallFunction|HasObject :Object manager)
@@ -135,11 +221,12 @@ code["RegisterStrings"] = f"""(fn RegisterStrings (Context)
     (return true))"""
 code["HasObject"] = """(fn HasObject (Object)
     (Utilities|IsValid Object (:"Is Valid" (return true)) (:"Is Not Valid" (return false))))"""
+legacy_dutch = {"inherit": ["Categorie overnemen"], "priority.0": ["Zeer laag"], "priority.1": ["Laag"], "priority.2": ["Normaal"], "priority.3": ["Hoog"], "priority.4": ["Zeer hoog"]}
 code["ParsePriority"] = """(fn ParsePriority (Value AllowInherit)
     """ + "\n".join(
         f'(if (and {"AllowInherit" if value == -1 else "true"} (Utilities|String|EqualExactly(String) Value {literal(label)})) (return true {value}))'
         for key, value in [("inherit", -1)] + [(f"priority.{i}", i) for i in range(5)]
-        for label in dict.fromkeys(["inherit" if value == -1 else str(value), "WorkerOptimizer.ui." + key] + translations[key])
+        for label in dict.fromkeys(["inherit" if value == -1 else str(value), "WorkerOptimizer.ui." + key] + translations[key] + legacy_dutch.get(key, []))
     ) + "\n(return false 2))"
 code["ResolvePriority"] = """(fn ResolvePriority (CategoryValue TypeValue)
     (bind (typeOK typePriority) (CallFunction|ParsePriority :Value TypeValue :AllowInherit true))
@@ -147,7 +234,7 @@ code["ResolvePriority"] = """(fn ResolvePriority (CategoryValue TypeValue)
     (bind (categoryOK categoryPriority) (CallFunction|ParsePriority :Value CategoryValue :AllowInherit false))
     (if categoryOK (return categoryPriority))
     (return 2))"""
-code["IsStrictValue"] = "(fn IsStrictValue (Value) " + " ".join(f'(if (Utilities|String|EqualExactly(String) Value {literal(label)}) (return false))' for label in ["Weighted", "WorkerOptimizer.ui.weighted"] + translations["weighted"]) + " (return true))"
+code["IsStrictValue"] = "(fn IsStrictValue (Value) " + " ".join(f'(if (Utilities|String|EqualExactly(String) Value {literal(label)}) (return false))' for label in ["Weighted", "WorkerOptimizer.ui.weighted", "Prioriteiten en productiviteit afwegen"] + translations["weighted"]) + " (return true))"
 code["CategoryLabelKey"] = """(fn CategoryLabelKey (Key)
     (return (Utilities|String|Append :A "toolbar." :B (Utilities|String|ToString(Name) Key))))"""
 code["ResolveLabel"] = """(fn ResolveLabel (Key StringKey)
@@ -190,10 +277,16 @@ code["ParseReserve"] = """(fn ParseReserve (Value)
       (if (Utilities|String|EqualExactly(String) Value (Utilities|String|ToString(Integer) number)) (return number)))
     (return 1))"""
 code["ReadReserve"] = f"""(fn ReadReserve (Context)
-    (if (not (CallFunction|HasObject :Object Context)) (return 1))
-    {api_guard('1')}
-    (bind value ({read} :self api :WorldContext Context :optionId "WorkerOptimizer.reserve" :fallbackValue "1"))
+    (if {arr('PolicyFrozen')} (return {arr('FrozenReserve')}))
+    (bind value (CallFunction|ReadOption :Context Context :OptionId "WorkerOptimizer.reserve" :Fallback "1"))
     (bind count (CallFunction|ParseReserve :Value value)) (return count))"""
+auto_modes = ("off", "day_start", "minutes_5", "minutes_10", "minutes_15")
+code["ParseAutoMode"] = "(fn ParseAutoMode (Value) " + " ".join(
+    f'(if (or (Utilities|String|EqualExactly(String) Value "{mode}") (Utilities|String|EqualExactly(String) Value "WorkerOptimizer.ui.auto.{mode}")) (return "{mode}"))'
+    for mode in auto_modes) + ' (return "off"))'
+code["ReadAutoMode"] = """(fn ReadAutoMode (Context)
+    (bind value (CallFunction|ReadOption :Context Context :OptionId "WorkerOptimizer.auto_assignment" :Fallback "WorkerOptimizer.ui.auto.off"))
+    (bind mode (CallFunction|ParseAutoMode :Value value)) (return mode))"""
 code["RegisterGeneral"] = f"""(fn RegisterGeneral (Context)
     (if (not (CallFunction|HasObject :Object Context)) (return false))
     {api_guard('false')}
@@ -209,7 +302,12 @@ code["RegisterGeneral"] = f"""(fn RegisterGeneral (Context)
     (for i (range 101) (Utilities|Array|Add {values} (Utilities|String|ToString(Integer) i)))
     (bind reserve ({register} :self api :WorldContext Context :optionId "WorkerOptimizer.reserve"
       :optionDisplayName "WorkerOptimizer.ui.title.reserve" :Values {values} :DefaultValue "1" :optionDescription "WorkerOptimizer.ui.reserve_desc"))
-    (return reserve))"""
+    (if (not reserve) (return false))
+    (Utilities|Array|Clear {values})
+    {' '.join(f'(Utilities|Array|Add {values} "WorkerOptimizer.ui.auto.{mode}")' for mode in auto_modes)}
+    (bind automatic ({register} :self api :WorldContext Context :optionId "WorkerOptimizer.auto_assignment"
+      :optionDisplayName "WorkerOptimizer.ui.title.auto_assignment" :Values {values} :DefaultValue "WorkerOptimizer.ui.auto.off" :optionDescription "WorkerOptimizer.ui.auto_assignment_desc"))
+    (return automatic))"""
 for kind in ("Category", "Type"):
     param = kind
     title = 'Label'
@@ -230,6 +328,11 @@ for kind in ("Category", "Type"):
 code["EnsureDefinitionOptions"] = """(fn EnsureDefinitionOptions (Context Type Category StringKey)
     (if (not (CallFunction|HasObject :Object Context)) (return false))
     (if (== Type "None") (return false))
+    (bind keyReady (CallFunction|AddPolicyKey :Type Type :Category Category))
+    (if (not keyReady) (return false))
+    (bind metadataIndex (Utilities|Array|FindItem (Variables|Default|GetKnownTypes) Type))
+    (Utilities|Array|SetArrayElem :TargetArray (Variables|Default|GetKnownTypeCategories) :Index metadataIndex :Item Category)
+    (Utilities|Array|SetArrayElem :TargetArray (Variables|Default|GetKnownTypeStringKeys) :Index metadataIndex :Item StringKey)
     (if (and (!= Category "None") (not (Utilities|Array|ContainsItem (Variables|Default|GetRegisteredCategories) Category)))
       (bind categoryLabel (CallFunction|ResolveLabel :Key Category :StringKey (CallFunction|CategoryLabelKey :Key Category)))
       (bind categoryReady (CallFunction|RegisterCategory :Context Context :Category Category :Label categoryLabel))
@@ -239,24 +342,30 @@ code["EnsureDefinitionOptions"] = """(fn EnsureDefinitionOptions (Context Type C
     (bind typeReady (CallFunction|RegisterType :Context Context :Type Type :Label typeLabel))
     (return typeReady))"""
 code["ReadPriority"] = f"""(fn ReadPriority (Context Category Type)
-    (if (not (CallFunction|HasObject :Object Context)) (return 2))
-    {api_guard('2')}
+    (if {arr('PolicyFrozen')}
+      (bind typeIndex (Utilities|Array|FindItem {arr('FrozenTypes')} Type))
+      (if (>= typeIndex 0)
+        (if (>= {item('FrozenTypeValues', 'typeIndex')} 0) (return {item('FrozenTypeValues', 'typeIndex')})))
+      (bind categoryIndex (Utilities|Array|FindItem {arr('FrozenCategories')} Category))
+      (if (>= categoryIndex 0) (return {item('FrozenCategoryValues', 'categoryIndex')}))
+      (return 2))
     (bind categoryKey (CallFunction|CategoryOptionId :Key Category))
     (bind typeKey (CallFunction|TypeOptionId :Key Type))
-    (bind categoryValue ({read} :self api :WorldContext Context :optionId categoryKey :fallbackValue "2"))
-    (bind typeValue ({read} :self api :WorldContext Context :optionId typeKey :fallbackValue "inherit"))
+    (bind categoryValue (CallFunction|ReadOption :Context Context :OptionId categoryKey :Fallback "2"))
+    (bind typeValue (CallFunction|ReadOption :Context Context :OptionId typeKey :Fallback "inherit"))
     (bind priority (CallFunction|ResolvePriority :CategoryValue categoryValue :TypeValue typeValue))
     (return priority))"""
 code["ReadStrictMode"] = f"""(fn ReadStrictMode (Context)
-    (if (not (CallFunction|HasObject :Object Context)) (return true))
-    {api_guard('true')}
-    (bind value ({read} :self api :WorldContext Context :optionId "WorkerOptimizer.mode" :fallbackValue "Strict"))
+    (if {arr('PolicyFrozen')} (return {arr('FrozenStrict')}))
+    (bind value (CallFunction|ReadOption :Context Context :OptionId "WorkerOptimizer.mode" :Fallback "Strict"))
     (bind strict (CallFunction|IsStrictValue :Value value))
     (return strict))"""
 for source in code.values():
     blueprint_dsl.parse(source)
 with toolset_registry.tool_raising_exceptions():
     for name, source in code.items():
+        if os.environ.get("WO_UI_PRIORITY_ONLY") == "1" and name not in {"WriteOption", "BeginPolicyKeys", "AddPolicyKey", "EnsureDefinitionOptions", "Localize", "ParsePriority", "IsStrictValue"}:
+            continue
         unreal.log("WO_PRIORITY_SETTINGS_WRITE " + name)
         BP.write_graph_dsl(graphs[name], source)
     BP.compile_blueprint(bp, warnings_as_errors=True)
@@ -267,5 +376,6 @@ with toolset_registry.tool_raising_exceptions():
     assert unreal.EditorAssetLibrary.save_loaded_asset(bp)
     Path(unreal.Paths.project_saved_dir(), "WorkerOptimizer-PrioritySettings.dsl").write_text("\n\n".join(code.values()), encoding="utf-8")
 unreal.log("WO_PRIORITY_SETTINGS_GENERATED")
-exec(Path(__file__).with_name("test_priority_settings.py").read_text(encoding="utf-8"))
+if os.environ.get("WO_SKIP_GENERATOR_TESTS") != "1":
+    exec(Path(__file__).with_name("test_priority_settings.py").read_text(encoding="utf-8"))
 exec(Path(__file__).with_name("test_localization.py").read_text(encoding="utf-8"))

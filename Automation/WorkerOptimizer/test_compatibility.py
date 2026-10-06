@@ -19,6 +19,7 @@ def run():
     controller, bridge = spawn(load("BP_WorkerOptimizer")), spawn(load("BP_ActionBridge"))
     assert bridge.call_method("InitializeBridge", args=(unreal.new_object(load("WBP_ActionContext")),))
     assert controller.call_method("Initialize", args=(controller, bridge))
+    assert controller.get_editor_property("Settings").call_method("FinishPolicyKeys")
     snapshot = controller.get_editor_property("Snapshot")
     widget = None
     try:
@@ -87,13 +88,21 @@ def run():
         controller.call_method("CompleteRun")
         assert widget.call_method("RefreshUI")
         action = widget.get_editor_property("ActionButton")
-        assert str(action.get_editor_property("tool_tip_text")) == "Completed. Unsupported workplaces left unchanged: 1"
-        warning_color = action.get_editor_property("background_color").export_text()
+        # Intentional preservation is informational in the redesigned HUD.
+        # The terminal report remains the source even after a fresh snapshot.
+        tooltip = str(action.get_editor_property("tool_tip_text"))
+        assert tooltip.startswith("Worker Optimizer: Completed"), tooltip
+        assert "future_workplace" not in tooltip and "99002" not in tooltip
+        assert widget.get_editor_property("ActionState") == 3
+        icon = widget.get_editor_property("OutcomeIcon")
+        assert icon.get_visibility() == unreal.SlateVisibility.HIT_TEST_INVISIBLE
+        assert icon.get_editor_property("brush").get_editor_property("resource_object") == unreal.load_asset(root + "T_WorkerOptimizerStatusCompleted")
+        completed_color = action.get_editor_property("background_color").export_text()
         snapshot.call_method("ResetSnapshot")
         assert not list(snapshot.get_editor_property("CompatibilityMessages"))
         assert widget.call_method("RefreshUI")
-        assert str(action.get_editor_property("tool_tip_text")) == "Worker Optimizer: Completed"
-        assert warning_color != action.get_editor_property("background_color").export_text()
+        assert str(action.get_editor_property("tool_tip_text")) == tooltip
+        assert completed_color == action.get_editor_property("background_color").export_text()
         unreal.log("WO_COMPATIBILITY_TESTS_PASS: definition and employee evidence, no housing/pause/foreign warnings, deduplication, protected occupants, reset and partial-success UI; native definition/logging success remains shipping-only")
     finally:
         if widget:

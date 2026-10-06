@@ -19,8 +19,8 @@ for name, cls in list((name, load(cls)) for name, cls in refs.items()) + [("Cont
     if name not in existing:
         BP.add_object_variable(bp, name, cls)
 for kind, names in {
-    "bool": "SearchActive SearchDone SearchSucceeded HasBest ChoosingWorker PolicyReady Strict CacheReady",
-    "int": "State BuildingIndex ChoiceWorker CurrentSchool CandidatesEvaluated CandidatesPruned CandidateTotal BestTotal RequestedReserve",
+    "bool": "SearchActive SearchDone SearchSucceeded HasBest ChoosingWorker PolicyReady Strict CacheReady SearchSetupActive EquivalentDone EquivalentResult CoverageReady ComparisonReady CandidateWins",
+    "int": "State BuildingIndex ChoiceWorker CurrentSchool CandidatesEvaluated CandidatesPruned CandidateTotal BestTotal RequestedReserve StepWorkLimit LastStepWork InitCursor QualityCursor ChoiceStage ChoiceRow EquivalentIndex CandidateStage CandidateIndex DuplicateIndex CandidateTeacher CompareTier CompareIndex SelectionIndex",
     "float": "CandidateWeighted BestWeighted BestBuilderQuality",
     "name": "FailureCode",
     "int[]": "SchoolBuildings ChoiceStarts ChoiceCounts ChoiceCursors Choices Teachers UsedTeachers Priorities BestAssignment BestTeachers CandidateCounts BestCounts",
@@ -30,6 +30,7 @@ for kind, names in {
     for name in names.split():
         if name not in existing:
             BP.add_variable(bp, name, kind.removesuffix("[]"), container_type=ContainerType.ARRAY if kind.endswith("[]") else None)
+BP.set_variable_instance_editable(bp, "StepWorkLimit", True)
 definitions = {
     "HasObject": [("Object", unreal.Object.static_class())],
     "FailSearch": [("Reason", "name")],
@@ -62,6 +63,8 @@ def put(name, value):
 
 
 def prop(ref, name):
+    if ref == "Planner" and name in ("LastStepWork", "StepWorkLimit"):
+        return f"(Class|BPAssignmentSolver|Get{name} :self {g(ref)})"
     return f"(Class|{refs[ref].replace('_', '')}|Get{name} :self {g(ref)})"
 
 
@@ -94,7 +97,8 @@ def fail(reason):
 
 
 def next_candidate():
-    return "(bind advanced (CallFunction|AdvanceSelection)) (return advanced)"
+    index = f'(- {count(g("SchoolBuildings"))} 1)'
+    return f"{put('SelectionIndex', index)} {put('State', '4')} (return true)"
 
 
 arrays = "SchoolBuildings ChoiceStarts ChoiceCounts ChoiceCursors Choices Teachers UsedTeachers Priorities BestAssignment BestTeachers CandidateCounts BestCounts Minimum CandidateCoverage BestCoverage CandidateScores BestScores TeacherGroups CachedScores".split()
@@ -125,85 +129,120 @@ code["BeginSearch"] = f"""(fn BeginSearch (InputLayout InputMatrix InputPlanner 
     (if (not (and {prop('Layout', 'LayoutDone')} {prop('Layout', 'LayoutSucceeded')})) {fail('invalid_layout')})
     {put('Snapshot', prop('Layout', 'Snapshot'))}
     (if (not {present(g('Snapshot'))}) {fail('invalid_snapshot')})
-    (for b (range {count(prop('Snapshot', 'Buildings'))}) {add('Teachers', '-1')} {add('TeacherGroups', 'false')})
+    {put('InitCursor', '0')} {put('QualityCursor', '0')} {put('SearchSetupActive', 'true')}
+    {put('ChoiceStage', '0')} {put('LastStepWork', '0')} {put('CandidateStage', '0')} {put('CandidateIndex', '0')}
     {put('SearchActive', 'true')} (return true))"""
 code["ConfigureReserve"] = f"""(fn ConfigureReserve (Requested Quality)
-    (if (or (not {g('SearchActive')}) (or (!= {g('State')} 0) (!= {g('BuildingIndex')} 0))) (return false))
+    (if (or (not {g('SearchActive')}) (or (!= {g('State')} 0) (or (!= {g('BuildingIndex')} 0) (> {g('InitCursor')} 0)))) (return false))
     (if (or (< Requested 0) (> Requested 100)) (return false))
     (if (!= (Utilities|Array|Length Quality) {count(prop('Layout', 'ColumnActors'))}) (return false))
-    (for value Quality (if (not (and (>= value 0.0) (<= value 1000000.0))) (return false)))
     {put('RequestedReserve', 'Requested')} {put('BuilderQuality', 'Quality')}
     (return true))"""
 code["BuildChoices"] = f"""(fn BuildChoices ()
-    (if (>= {g('BuildingIndex')} {count(prop('Snapshot', 'Buildings'))}) {put('State', '1')} (return true))
+    (if {g('SearchSetupActive')}
+      (if (< {g('InitCursor')} {count(prop('Snapshot', 'Buildings'))})
+        {add('Teachers', '-1')} {add('TeacherGroups', 'false')}
+        {put('InitCursor', f'(+ {g("InitCursor")} 1)')} (return true))
+      (if (< {g('QualityCursor')} {count(g('BuilderQuality'))})
+        (bind value {at(g('BuilderQuality'), g('QualityCursor'))})
+        (if (not (and (>= value 0.0) (<= value 1000000.0))) {fail('invalid_reserve_quality')})
+        {put('QualityCursor', f'(+ {g("QualityCursor")} 1)')} (return true))
+      {put('SearchSetupActive', 'false')} (return true))
+    (if (>= {g('BuildingIndex')} {count(prop('Snapshot', 'Buildings'))})
+      {put('SelectionIndex', f'(- {count(g("SchoolBuildings"))} 1)')}
+      {put('State', '1')} {put('CandidateStage', '0')} {put('CandidateIndex', '0')} (return true))
     (if (not {at(prop('Layout', 'SchoolBuildings'), g('BuildingIndex'))})
       {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')} (return true))
-    (if (not {g('ChoosingWorker')})
+    (if (== {g('ChoiceStage')} 0)
       {put('CurrentSchool', count(g('SchoolBuildings')))} {add('SchoolBuildings', g('BuildingIndex'))}
       {add('ChoiceStarts', count(g('Choices')))} {add('ChoiceCounts', '1')} {add('ChoiceCursors', '0')}
       (bind first {at(prop('Layout', 'BuildingStarts'), g('BuildingIndex'))})
       (if (not (Utilities|Array|IsValidIndex {prop('Layout', 'FixedSlots')} first)) {fail('unsupported_school')})
       {set_a('TeacherGroups', g('BuildingIndex'), 'true')}
-      (for r (range {count(prop('Layout', 'RowBuildings'))})
+      {put('ChoiceRow', '0')} {put('ChoiceStage', '1')} (return true))
+    (if (== {g('ChoiceStage')} 1)
+      (if (< {g('ChoiceRow')} {count(prop('Layout', 'RowBuildings'))})
+        (bind r {g('ChoiceRow')})
         (if (and (== {at(prop('Layout', 'RowBuildings'), 'r')} {g('BuildingIndex')}) (>= {at(prop('Layout', 'FixedSlots'), 'r')} 0))
-          {set_a('TeacherGroups', g('BuildingIndex'), 'false')} (break)))
-      (bind fixed {at(prop('Layout', 'FixedSlots'), 'first')})
-      (if (>= fixed 0)
-        {add('Choices', 'fixed')} {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')} (return true))
-      {put('ChoiceWorker', '0')} {put('ChoosingWorker', 'true')} (return true))
+          {set_a('TeacherGroups', g('BuildingIndex'), 'false')})
+        {put('ChoiceRow', '(+ r 1)')} (return true))
+      (bind fixed {at(prop('Layout', 'FixedSlots'), at(prop('Layout', 'BuildingStarts'), g('BuildingIndex')))})
+      (if (>= fixed 0) {add('Choices', 'fixed')} {put('ChoiceStage', '0')} {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')} (return true))
+      {put('ChoiceWorker', '0')} {put('ChoiceStage', '2')} (return true))
+    (if (== {g('ChoiceStage')} 3)
+      (bind same (CallFunction|HasEquivalentChoice :Column {g('ChoiceWorker')}))
+      (if (not {g('EquivalentDone')}) (return true))
+      (if (not same) {add('Choices', g('ChoiceWorker'))}
+        {set_a('ChoiceCounts', g('CurrentSchool'), f'(+ {at(g("ChoiceCounts"), g("CurrentSchool"))} 1)')})
+      {put('ChoiceWorker', f'(+ {g("ChoiceWorker")} 1)')} {put('ChoiceStage', '2')} (return true))
     (if (>= {g('ChoiceWorker')} {count(prop('Snapshot', 'Workers'))})
-      {add('Choices', '-1')} {put('ChoosingWorker', 'false')} {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')} (return true))
+      {add('Choices', '-1')} {put('ChoiceStage', '0')} {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')} (return true))
     (bind eligible (Class|BPJobEligibility|CanFillSlot :self {g('Snapshot')}
       :Worker {at(prop('Snapshot', 'Workers'), g('ChoiceWorker'))}
       :Building {at(prop('Snapshot', 'Buildings'), g('BuildingIndex'))} :SlotIndex 0))
     (if eligible
-      (bind equivalent (CallFunction|HasEquivalentChoice :Column {g('ChoiceWorker')}))
-      (if (not equivalent) {add('Choices', g('ChoiceWorker'))}
-        {set_a('ChoiceCounts', g('CurrentSchool'), f'(+ {at(g("ChoiceCounts"), g("CurrentSchool"))} 1)')}))
+      {put('EquivalentIndex', at(g('ChoiceStarts'), g('CurrentSchool')))}
+      {put('EquivalentDone', 'false')} {put('EquivalentResult', 'false')} {put('ChoiceStage', '3')} (return true))
     {put('ChoiceWorker', f'(+ {g("ChoiceWorker")} 1)')} (return true))"""
+
 code["HasEquivalentChoice"] = f"""(fn HasEquivalentChoice (Column)
-    (if (not {at(g('TeacherGroups'), g('BuildingIndex'))}) (return false))
-    (for index (range {at(g('ChoiceStarts'), g('CurrentSchool'))} {count(g('Choices'))})
-      (bind candidate {at(g('Choices'), 'index')})
-      (if (>= candidate 0)
-        (bind same (Class|BPJobEligibility|SameTeacherProfile :self {g('Snapshot')}
-          :Left {at(prop('Snapshot', 'Workers'), 'candidate')} :Right {at(prop('Snapshot', 'Workers'), 'Column')}
-          :Building {at(prop('Snapshot', 'Buildings'), g('BuildingIndex'))}))
-        (if same (return true))))
-    (return false))"""
+    (if {g('EquivalentDone')} (return {g('EquivalentResult')}))
+    (if (or (not {at(g('TeacherGroups'), g('BuildingIndex'))}) (>= {g('EquivalentIndex')} {count(g('Choices'))}))
+      {put('EquivalentDone', 'true')} (return false))
+    (bind candidate {at(g('Choices'), g('EquivalentIndex'))})
+    (if (>= candidate 0)
+      (bind same (Class|BPJobEligibility|SameTeacherProfile :self {g('Snapshot')}
+        :Left {at(prop('Snapshot', 'Workers'), 'candidate')} :Right {at(prop('Snapshot', 'Workers'), 'Column')}
+        :Building {at(prop('Snapshot', 'Buildings'), g('BuildingIndex'))}))
+      (if same {put('EquivalentDone', 'true')} {put('EquivalentResult', 'true')} (return true)))
+    {put('EquivalentIndex', f'(+ {g("EquivalentIndex")} 1)')} (return false))"""
+
 code["AdvanceSelection"] = f"""(fn AdvanceSelection ()
-    (for n (range {count(g('SchoolBuildings'))})
-      (bind index (- (- {count(g('SchoolBuildings'))} 1) n))
+    (if (>= {g('SelectionIndex')} 0)
+      (bind index {g('SelectionIndex')})
       {set_a('ChoiceCursors', 'index', f'(+ {at(g("ChoiceCursors"), "index")} 1)')}
-      (if (< {at(g('ChoiceCursors'), 'index')} {at(g('ChoiceCounts'), 'index')}) {put('State', '1')} (return true))
-      {set_a('ChoiceCursors', 'index', '0')})
+      (if (< {at(g('ChoiceCursors'), 'index')} {at(g('ChoiceCounts'), 'index')})
+        {put('State', '1')} {put('CandidateStage', '0')} {put('CandidateIndex', '0')} (return true))
+      {set_a('ChoiceCursors', 'index', '0')} {put('SelectionIndex', '(- index 1)')} (return true))
     (if (not {g('HasBest')}) {fail('no_feasible_plan')})
     {put('SearchActive', 'false')} {put('SearchDone', 'true')} {put('SearchSucceeded', 'true')} (return true))"""
+
 code["RejectedCandidate"] = f"""(fn RejectedCandidate ()
     (bind reason {prop('Matrix', 'FailureCode')})
     (if (or (== reason "invalid_teachers") (or (== reason "incompatible_fixed_student") (== reason "ineligible_required_teacher")))
       {put('CandidatesPruned', f'(+ {g("CandidatesPruned")} 1)')} {next_candidate()})
     (CallFunction|FailSearch :Reason reason) (return false))"""
 code["CoverageBelowBest"] = f"""(fn CoverageBelowBest ()
-    (if (or (not {g('HasBest')}) (not {g('PolicyReady')})) (return false))
-    (for t (range 5)
-      (bind tier (- 4 t))
-      (for b (range {count(g('Priorities'))})
-        (if (== {at(g('Priorities'), 'b')} tier)
-          (bind possible (or (not {at(prop('Layout', 'SchoolBuildings'), 'b')}) (>= {at(g('Teachers'), 'b')} 0)))
-          (if (!= possible {at(g('BestCoverage'), 'b')}) (return (not possible))))))
-    (return false))"""
+    (if (or (not {g('HasBest')}) (not {g('PolicyReady')})) {put('CoverageReady', 'true')} (return false))
+    (if (< {g('CompareTier')} 0) {put('CoverageReady', 'true')} (return false))
+    (bind b {g('CompareIndex')})
+    (if (>= b {count(g('Priorities'))})
+      {put('CompareTier', f'(- {g("CompareTier")} 1)')} {put('CompareIndex', '0')} (return false))
+    (if (== {at(g('Priorities'), 'b')} {g('CompareTier')})
+      (bind possible (or (not {at(prop('Layout', 'SchoolBuildings'), 'b')}) (>= {at(g('Teachers'), 'b')} 0)))
+      (if (!= possible {at(g('BestCoverage'), 'b')}) {put('CoverageReady', 'true')} (return (not possible))))
+    {put('CompareIndex', '(+ b 1)')} (return false))"""
+
 code["BeginCandidate"] = f"""(fn BeginCandidate ()
-    (Utilities|Array|Clear {g('UsedTeachers')})
-    (for n (range {count(g('SchoolBuildings'))})
-      (bind index (+ {at(g('ChoiceStarts'), 'n')} {at(g('ChoiceCursors'), 'n')}))
-      (bind teacher {at(g('Choices'), 'index')})
-      {set_a('Teachers', at(g('SchoolBuildings'), 'n'), 'teacher')}
-      (if (and (>= teacher 0) (not {at(g('TeacherGroups'), at(g('SchoolBuildings'), 'n'))}))
-        (if (Utilities|Array|ContainsItem {g('UsedTeachers')} teacher)
+    (if (== {g('CandidateStage')} 0)
+      (if (== {g('CandidateIndex')} 0) (Utilities|Array|Clear {g('UsedTeachers')}))
+      (if (< {g('CandidateIndex')} {count(g('SchoolBuildings'))})
+        (bind n {g('CandidateIndex')})
+        (bind index (+ {at(g('ChoiceStarts'), 'n')} {at(g('ChoiceCursors'), 'n')}))
+        {put('CandidateTeacher', at(g('Choices'), 'index'))}
+        {set_a('Teachers', at(g('SchoolBuildings'), 'n'), g('CandidateTeacher'))}
+        (if (and (>= {g('CandidateTeacher')} 0) (not {at(g('TeacherGroups'), at(g('SchoolBuildings'), 'n'))}))
+          {put('DuplicateIndex', '0')} {put('CandidateStage', '1')} (return true))
+        {put('CandidateIndex', '(+ n 1)')} (return true))
+      {put('CompareTier', '4')} {put('CompareIndex', '0')} {put('CoverageReady', 'false')} {put('CandidateStage', '2')} (return true))
+    (if (== {g('CandidateStage')} 1)
+      (if (< {g('DuplicateIndex')} {count(g('UsedTeachers'))})
+        (if (== {at(g('UsedTeachers'), g('DuplicateIndex'))} {g('CandidateTeacher')})
           {put('CandidatesPruned', f'(+ {g("CandidatesPruned")} 1)')} {next_candidate()})
-        {add('UsedTeachers', 'teacher')}))
+        {put('DuplicateIndex', f'(+ {g("DuplicateIndex")} 1)')} (return true))
+      {add('UsedTeachers', g('CandidateTeacher'))} {put('CandidateIndex', f'(+ {g("CandidateIndex")} 1)')} {put('CandidateStage', '0')} (return true))
     (bind below (CallFunction|CoverageBelowBest))
+    (if (not {g('CoverageReady')}) (return true))
     (if below {put('CandidatesPruned', f'(+ {g("CandidatesPruned")} 1)')} {next_candidate()})
     (bind started {invoke('Matrix', 'BeginMatrix', f':InputLayout {g("Layout")} :InputScorer {g("Scorer")} :InputSettings {g("Settings")} :InputContext {g("Context")} :InputTeachers {g("Teachers")}')})
     (if (not started) (bind rejected (CallFunction|RejectedCandidate)) (return rejected))
@@ -216,95 +255,138 @@ code["BeginCandidate"] = f"""(fn BeginCandidate ()
       (bind policyOK {invoke('Matrix', 'UsePolicy', f':InputPriorities {g("Priorities")} :InputStrict {g("Strict")}')})
       (if (not policyOK) {fail('policy_import_failed')}))
     {put('State', '2')} (return true))"""
+
 code["AdvanceMatrixStep"] = f"""(fn AdvanceMatrixStep ()
     (if (not {prop('Matrix', 'MatrixDone')})
-      {invoke('Matrix', 'AdvanceMatrix')} (return true))
+      (Class|BPScoreMatrix|SetStepWorkLimit :self {g('Matrix')} :StepWorkLimit {g('StepWorkLimit')})
+      {invoke('Matrix', 'AdvanceMatrix')} {put('LastStepWork', prop('Matrix', 'LastStepWork'))} (return true))
     (if (not {prop('Matrix', 'MatrixSucceeded')})
       (bind rejected (CallFunction|RejectedCandidate)) (return rejected))
     (if (not {g('CacheReady')}) {put('CachedScores', prop('Matrix', 'Scores'))} {put('CacheReady', 'true')})
     (if (not {g('PolicyReady')})
       {put('Strict', prop('Matrix', 'Strict'))} {put('Priorities', prop('Matrix', 'Priorities'))}
-      {put('Minimum', prop('Matrix', 'Minimum'))} {put('PolicyReady', 'true')}
-      (else
-        (if (!= {g('Strict')} {prop('Matrix', 'Strict')}) {fail('settings_changed')})
-        (if (!= {count(g('Priorities'))} {count(prop('Matrix', 'Priorities'))}) {fail('settings_changed')})
-        (if (!= {count(g('Minimum'))} {count(prop('Matrix', 'Minimum'))}) {fail('world_changed')})
-        (for b (range {count(g('Priorities'))})
-          (if (!= {at(g('Priorities'), 'b')} {at(prop('Matrix', 'Priorities'), 'b')}) {fail('settings_changed')}))
-        (for r (range {count(g('Minimum'))})
-          (if (!= {at(g('Minimum'), 'r')} {at(prop('Matrix', 'Minimum'), 'r')}) {fail('world_changed')}))))
-    {invoke('Planner', 'StartPlan', f':InputScores {prop("Matrix", "Scores")} :InputBuildings {prop("Layout", "RowBuildings")} :InputMinimum {g("Minimum")} :InputPriorities {g("Priorities")} :InputWorkers {count(prop("Layout", "ColumnActors"))} :InputStrict {g("Strict")}')}
-    (if (not {prop('Planner', 'PlanDone')})
-      (bind fixedOK {invoke('Planner', 'RequireFixedSlots', f':InputFixed {prop("Matrix", "FixedSlots")}')})
-      (if (not fixedOK) {fail('planner_constraints_failed')})
-      (if (> {g('RequestedReserve')} 0)
-        (bind reserved {invoke('Planner', 'KeepUnassigned', f':Requested {g("RequestedReserve")} :Movable {count(prop("Snapshot", "Workers"))} :Quality {g("BuilderQuality")}')})
-        (if (not reserved)
-          {put('CandidatesPruned', f'(+ {g("CandidatesPruned")} 1)')} {next_candidate()})))
-    {put('State', '3')} (return true))"""
+      {put('Minimum', prop('Matrix', 'Minimum'))} {put('PolicyReady', 'true')} {put('State', '13')} (return true))
+    (if (!= {g('Strict')} {prop('Matrix', 'Strict')}) {fail('settings_changed')})
+    (if (!= {count(g('Priorities'))} {count(prop('Matrix', 'Priorities'))}) {fail('settings_changed')})
+    (if (!= {count(g('Minimum'))} {count(prop('Matrix', 'Minimum'))}) {fail('world_changed')})
+    {put('CompareIndex', '0')} {put('State', '11')} (return true))"""
+
 code["CandidateBetter"] = f"""(fn CandidateBetter ()
-    (if (not {g('HasBest')}) (return true))
-    (for t (range 5)
-      (bind tier (- 4 t))
-      (for b (range {count(g('Priorities'))})
-        (if (== {at(g('Priorities'), 'b')} tier)
-          (if (!= {at(g('CandidateCoverage'), 'b')} {at(g('BestCoverage'), 'b')})
-            (return {at(g('CandidateCoverage'), 'b')})))))
+    (if (not {g('HasBest')}) {put('ComparisonReady', 'true')} (return true))
+    (if (== {g('State')} 7)
+      (if (< {g('CompareTier')} 0) {put('CompareTier', '4')} {put('State', '8')} (return false))
+      (bind b {g('CompareIndex')})
+      (if (>= b {count(g('Priorities'))})
+        {put('CompareTier', f'(- {g("CompareTier")} 1)')} {put('CompareIndex', '0')} (return false))
+      (if (and (== {at(g('Priorities'), 'b')} {g('CompareTier')}) (!= {at(g('CandidateCoverage'), 'b')} {at(g('BestCoverage'), 'b')}))
+        {put('ComparisonReady', 'true')} (return {at(g('CandidateCoverage'), 'b')}))
+      {put('CompareIndex', '(+ b 1)')} (return false))
     (if {g('Strict')}
-      (for t (range 5)
-        (bind tier (- 4 t))
+      (if (>= {g('CompareTier')} 0)
+        (bind tier {g('CompareTier')})
         (if (!= {at(g('CandidateCounts'), 'tier')} {at(g('BestCounts'), 'tier')})
-          (return (> {at(g('CandidateCounts'), 'tier')} {at(g('BestCounts'), 'tier')})))
-        (if (> {at(g('CandidateScores'), 'tier')} (+ {at(g('BestScores'), 'tier')} 0.0001)) (return true))
-        (if (< {at(g('CandidateScores'), 'tier')} (- {at(g('BestScores'), 'tier')} 0.0001)) (return false)))
-      (return (> {prop('Planner', 'BuilderTotal')} (+ {g('BestBuilderQuality')} 0.0001))))
+          {put('ComparisonReady', 'true')} (return (> {at(g('CandidateCounts'), 'tier')} {at(g('BestCounts'), 'tier')})))
+        (if (> {at(g('CandidateScores'), 'tier')} (+ {at(g('BestScores'), 'tier')} 0.0001)) {put('ComparisonReady', 'true')} (return true))
+        (if (< {at(g('CandidateScores'), 'tier')} (- {at(g('BestScores'), 'tier')} 0.0001)) {put('ComparisonReady', 'true')} (return false))
+        {put('CompareTier', '(- tier 1)')} (return false))
+      {put('ComparisonReady', 'true')} (return (> {prop('Planner', 'BuilderTotal')} (+ {g('BestBuilderQuality')} 0.0001))))
+    {put('ComparisonReady', 'true')}
     (if (!= {g('CandidateTotal')} {g('BestTotal')}) (return (> {g('CandidateTotal')} {g('BestTotal')})))
     (if (> {g('CandidateWeighted')} (+ {g('BestWeighted')} 0.0001)) (return true))
     (if (< {g('CandidateWeighted')} (- {g('BestWeighted')} 0.0001)) (return false))
     (return (> {prop('Planner', 'BuilderTotal')} (+ {g('BestBuilderQuality')} 0.0001))))"""
+
 code["ConsiderCandidate"] = f"""(fn ConsiderCandidate ()
-    (if (not {prop('Planner', 'PlanSucceeded')}) {fail('planner_failed')})
-    (if (!= {count(prop('Planner', 'PlanAssignment'))} {count(prop('Layout', 'RowBuildings'))}) {fail('invalid_plan')})
-    (Utilities|Array|Clear {g('CandidateCoverage')})
-    (for b (range {count(g('Priorities'))}) {add('CandidateCoverage', 'true')})
-    (Utilities|Array|Clear {g('CandidateCounts')}) (Utilities|Array|Resize {g('CandidateCounts')} 5)
-    (Utilities|Array|Clear {g('CandidateScores')}) (Utilities|Array|Resize {g('CandidateScores')} 5)
-    {put('CandidateTotal', '0')} {put('CandidateWeighted', '0.0')}
-    (for r (range {count(prop('Layout', 'RowBuildings'))})
-      (bind worker {at(prop('Planner', 'PlanAssignment'), 'r')})
-      (bind building {at(prop('Layout', 'RowBuildings'), 'r')})
-      (bind tier {at(g('Priorities'), 'building')})
-      (if (or (< worker -1) (>= worker {count(prop('Layout', 'ColumnActors'))})) {fail('invalid_plan')})
-      (if (< worker 0)
-        (if {at(g('Minimum'), 'r')} {set_a('CandidateCoverage', 'building', 'false')})
-        (else
-          (bind index (+ (* r {count(prop('Layout', 'ColumnActors'))}) worker))
-          (bind score {at(prop('Matrix', 'Scores'), 'index')})
-          (if (not (and (>= score 0.0) (<= score 1000000.0))) {fail('invalid_plan')})
-          {set_a('CandidateCounts', 'tier', f'(+ {at(g("CandidateCounts"), "tier")} 1)')}
-          {set_a('CandidateScores', 'tier', f'(+ {at(g("CandidateScores"), "tier")} score)')}
-          {put('CandidateTotal', f'(+ {g("CandidateTotal")} 1)')}
-          {put('CandidateWeighted', f'(+ {g("CandidateWeighted")} (* score (+ tier 1)))')})))
-    (bind better (CallFunction|CandidateBetter))
-    (if better
-      {put('BestBuilderQuality', prop('Planner', 'BuilderTotal'))}
-      {put('BestAssignment', prop('Planner', 'PlanAssignment'))} {put('BestTeachers', g('Teachers'))}
-      (for building {g('SchoolBuildings')}
-        {set_a('BestTeachers', 'building', at(prop('Planner', 'PlanAssignment'), at(prop('Layout', 'BuildingStarts'), 'building')))})
-      {put('BestCoverage', g('CandidateCoverage'))} {put('BestCounts', g('CandidateCounts'))}
-      {put('BestScores', g('CandidateScores'))} {put('BestTotal', g('CandidateTotal'))}
-      {put('BestWeighted', g('CandidateWeighted'))} {put('HasBest', 'true')})
-    {put('CandidatesEvaluated', f'(+ {g("CandidatesEvaluated")} 1)')} {next_candidate()})"""
+    (bind r {g('CandidateIndex')})
+    (if (>= r {count(prop('Layout', 'RowBuildings'))})
+      {put('CompareTier', '4')} {put('CompareIndex', '0')} {put('ComparisonReady', 'false')} {put('State', '7')} (return true))
+    (bind worker {at(prop('Planner', 'PlanAssignment'), 'r')})
+    (bind building {at(prop('Layout', 'RowBuildings'), 'r')})
+    (bind tier {at(g('Priorities'), 'building')})
+    (if (or (< worker -1) (>= worker {count(prop('Layout', 'ColumnActors'))})) {fail('invalid_plan')})
+    (if (< worker 0)
+      (if {at(g('Minimum'), 'r')} {set_a('CandidateCoverage', 'building', 'false')})
+      (else
+        (if {at(prop('Layout', 'FlexibleMinimumBuildings'), 'building')} {set_a('CandidateCoverage', 'building', 'true')})
+        (bind index (+ (* r {count(prop('Layout', 'ColumnActors'))}) worker))
+        (bind score {at(prop('Matrix', 'Scores'), 'index')})
+        (if (not (and (>= score 0.0) (<= score 1000000.0))) {fail('invalid_plan')})
+        {set_a('CandidateCounts', 'tier', f'(+ {at(g("CandidateCounts"), "tier")} 1)')}
+        {set_a('CandidateScores', 'tier', f'(+ {at(g("CandidateScores"), "tier")} score)')}
+        {put('CandidateTotal', f'(+ {g("CandidateTotal")} 1)')}
+        {put('CandidateWeighted', f'(+ {g("CandidateWeighted")} (* score (+ tier 1)))')}))
+    {put('CandidateIndex', '(+ r 1)')} (return true))"""
+
 code["AdvanceSearch"] = f"""(fn AdvanceSearch ()
-    (if (not {g('SearchActive')}) (return false))
+    {put('LastStepWork', '0')} (if (not {g('SearchActive')}) (return false))
+    (if (<= {g('StepWorkLimit')} 0) {fail('invalid_step_limit')})
+    {put('LastStepWork', '1')}
     (switch int {g('State')}
       (:0 (bind built (CallFunction|BuildChoices)) (return built))
       (:1 (bind begun (CallFunction|BeginCandidate)) (return begun))
       (:2 (bind scored (CallFunction|AdvanceMatrixStep)) (return scored))
       (:3
-        (if (not {prop('Planner', 'PlanDone')}) {invoke('Planner', 'AdvancePlan')} (return true))
-        (bind considered (CallFunction|ConsiderCandidate)) (return considered))
+        (if (not {prop('Planner', 'PlanDone')})
+          (Class|BPAssignmentSolver|SetStepWorkLimit :self {g('Planner')} :StepWorkLimit {g('StepWorkLimit')})
+          {invoke('Planner', 'AdvancePlan')} {put('LastStepWork', prop('Planner', 'LastStepWork'))} (return true))
+        (if (not {prop('Planner', 'PlanSucceeded')}) {fail('planner_failed')})
+        (if (!= {count(prop('Planner', 'PlanAssignment'))} {count(prop('Layout', 'RowBuildings'))}) {fail('invalid_plan')})
+        (Utilities|Array|Clear {g('CandidateCoverage')})
+        (Utilities|Array|Clear {g('CandidateCounts')}) (Utilities|Array|Resize {g('CandidateCounts')} 5)
+        (Utilities|Array|Clear {g('CandidateScores')}) (Utilities|Array|Resize {g('CandidateScores')} 5)
+        {put('CandidateTotal', '0')} {put('CandidateWeighted', '0.0')} {put('CandidateIndex', '0')} {put('State', '5')} (return true))
+      (:4 (bind selected (CallFunction|AdvanceSelection)) (return selected))
+      (:5
+        (if (< {g('CandidateIndex')} {count(g('Priorities'))})
+          {add('CandidateCoverage', f'(not {at(prop("Layout", "FlexibleMinimumBuildings"), g("CandidateIndex"))})')} {put('CandidateIndex', f'(+ {g("CandidateIndex")} 1)')} (return true))
+        {put('CandidateIndex', '0')} {put('State', '6')} (return true))
+      (:6 (bind considered (CallFunction|ConsiderCandidate)) (return considered))
+      (:7
+        (bind better (CallFunction|CandidateBetter))
+        (if {g('ComparisonReady')} {put('CandidateWins', 'better')} {put('State', '9')}) (return true))
+      (:8
+        (bind better (CallFunction|CandidateBetter))
+        (if {g('ComparisonReady')} {put('CandidateWins', 'better')} {put('State', '9')}) (return true))
+      (:9
+        (if {g('CandidateWins')}
+          {put('BestBuilderQuality', prop('Planner', 'BuilderTotal'))}
+          {put('BestAssignment', prop('Planner', 'PlanAssignment'))} {put('BestTeachers', g('Teachers'))}
+          {put('BestCoverage', g('CandidateCoverage'))} {put('BestCounts', g('CandidateCounts'))}
+          {put('BestScores', g('CandidateScores'))} {put('BestTotal', g('CandidateTotal'))}
+          {put('BestWeighted', g('CandidateWeighted'))}
+          {put('CandidateIndex', '0')} {put('State', '10')} (return true))
+        {put('CandidatesEvaluated', f'(+ {g("CandidatesEvaluated")} 1)')} {next_candidate()})
+      (:10
+        (if (< {g('CandidateIndex')} {count(g('SchoolBuildings'))})
+          (bind building {at(g('SchoolBuildings'), g('CandidateIndex'))})
+          {set_a('BestTeachers', 'building', at(prop('Planner', 'PlanAssignment'), at(prop('Layout', 'BuildingStarts'), 'building')))}
+          {put('CandidateIndex', f'(+ {g("CandidateIndex")} 1)')} (return true))
+        {put('HasBest', 'true')} {put('CandidatesEvaluated', f'(+ {g("CandidatesEvaluated")} 1)')} {next_candidate()})
+      (:11
+        (bind b {g('CompareIndex')})
+        (if (< b {count(g('Priorities'))})
+          (if (!= {at(g('Priorities'), 'b')} {at(prop('Matrix', 'Priorities'), 'b')}) {fail('settings_changed')})
+          {put('CompareIndex', '(+ b 1)')} (return true))
+        {put('CompareIndex', '0')} {put('State', '12')} (return true))
+      (:12
+        (bind r {g('CompareIndex')})
+        (if (< r {count(g('Minimum'))})
+          (if (!= {at(g('Minimum'), 'r')} {at(prop('Matrix', 'Minimum'), 'r')}) {fail('world_changed')})
+          {put('CompareIndex', '(+ r 1)')} (return true))
+        {put('State', '13')} (return true))
+      (:13
+        {invoke('Planner', 'StartPlan', f':InputScores {prop("Matrix", "Scores")} :InputBuildings {prop("Layout", "RowBuildings")} :InputMinimum {g("Minimum")} :InputPriorities {g("Priorities")} :InputWorkers {count(prop("Layout", "ColumnActors"))} :InputStrict {g("Strict")}')}
+        (if (not {prop('Planner', 'PlanDone')})
+          (bind flexibleOK {invoke('Planner', 'RequireFlexibleMinimum', f':InputFlexible {prop("Layout", "FlexibleMinimumBuildings")}')})
+          (if (not flexibleOK) {fail('planner_constraints_failed')})
+          (bind fixedOK {invoke('Planner', 'RequireFixedSlots', f':InputFixed {prop("Matrix", "FixedSlots")}')})
+          (if (not fixedOK) {fail('planner_constraints_failed')})
+          (if (> {g('RequestedReserve')} 0)
+            (bind reserved {invoke('Planner', 'KeepUnassigned', f':Requested {g("RequestedReserve")} :Movable {count(prop("Snapshot", "Workers"))} :Quality {g("BuilderQuality")}')})
+            (if (not reserved) {put('CandidatesPruned', f'(+ {g("CandidatesPruned")} 1)')} {next_candidate()})))
+        {put('State', '3')} (return true))
       (:Default {fail('invalid_state')})))"""
+
 code["CancelSearch"] = f"""(fn CancelSearch ()
     (if (not {g('SearchActive')}) (return false))
     {invoke('Matrix', 'FailMatrix', ':Reason "cancelled"')} {invoke('Planner', 'FailPlan')}
@@ -321,6 +403,7 @@ with toolset_registry.tool_raising_exceptions():
         unreal.log("WO_PLAN_SEARCH_WRITE " + name)
         BP.write_graph_dsl(graphs[name], source)
     BP.compile_blueprint(bp, warnings_as_errors=True)
+    unreal.get_default_object(bp.generated_class()).set_editor_property("StepWorkLimit", 64)
     assert unreal.EditorAssetLibrary.save_loaded_asset(bp)
     Path(unreal.Paths.project_saved_dir(), "WorkerOptimizer-PlanSearch.dsl").write_text("\n\n".join(code.values()), encoding="utf-8")
 unreal.log("WO_PLAN_SEARCH_GENERATED")

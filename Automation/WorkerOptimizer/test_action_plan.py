@@ -52,6 +52,7 @@ def run():
     def build(targets, success=True):
         started = plan.call_method("BeginBuild", args=(snapshot, targets))[-1]
         if started:
+            assert not plan.get_editor_property("BuildingStarts"), "Plan setup still initializes every building synchronously"
             for _ in range(1000):
                 if plan.get_editor_property("BuildDone"):
                     break
@@ -74,6 +75,11 @@ def run():
         assert bridge.call_method("InitializeBridge", args=(unreal.new_object(load("WBP_ActionContext")),))
         columns = [list(column) for column in zip(*queue)] if queue else [[], [], [], []]
         assert runner.call_method("StartApplication", args=(snapshot, bridge, *columns, 0.0))[-1]
+        for _ in range(len(columns[0]) + 1):
+            if not runner.get_editor_property("ValidationActive"):
+                break
+            assert runner.call_method("AdvanceApplication", args=(0.0,))
+        assert not runner.get_editor_property("ValidationActive") and not runner.get_editor_property("Waiting")
         places = list(workplaces)
         for index, (building_index, slot_index, worker_index, fire) in enumerate(queue):
             assert bridge.call_method("ValidateAction", args=(snapshot, building_index, slot_index,
@@ -177,6 +183,7 @@ def run():
             [-1.0, -1.0, 0.0, -1.0, -1.0, -1.0, 2.0, 9.0, -1.0],
             list(layout.get_editor_property("RowBuildings")), list(layout.get_editor_property("Minimum")),
             [4, 0], len(layout.get_editor_property("ColumnActors")), True))
+        assert staffing.call_method("RequireFlexibleMinimum", args=(list(layout.get_editor_property("FlexibleMinimumBuildings")),))[-1]
         assert staffing.call_method("RequireFixedSlots", args=(list(layout.get_editor_property("FixedSlots")),))[-1]
         for _ in range(1000):
             if staffing.get_editor_property("PlanDone"):
@@ -229,7 +236,8 @@ def run():
         capture([optional], [], [])
         original_optional = oc.get_editor_property("m_workers").export_text()
         make_layout()
-        assert list(layout.get_editor_property("Minimum")) == [False, True], "An already locked incumbent satisfies a synthetic one-worker minimum"
+        assert list(layout.get_editor_property("Minimum")) == [False, False], "Flexible minimum is not pinned to an arbitrary slot"
+        assert list(layout.get_editor_property("FlexibleMinimumBuildings")) == [True]
         assert list(layout.get_editor_property("FixedSlots")) == [-1, 0]
         assert list(layout.get_editor_property("ColumnWorkers")) == [-2]
         assert original_optional == oc.get_editor_property("m_workers").export_text(), "Layout creation must be read-only"

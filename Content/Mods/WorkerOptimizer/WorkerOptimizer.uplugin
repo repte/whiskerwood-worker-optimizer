@@ -1,7 +1,7 @@
 {
   "Name": "WorkerOptimizer",
-  "Description": "On-demand worker assignment with guild matching, minimum crews, configurable priorities and a free-builder reserve. Development build.",
-  "Version": "0.1.1-dev",
+  "Description": "Worker assignment with configurable priorities, builder reserve, optional automatic scheduling and a per-save logbook. Local test build.",
+  "Version": "0.2.0-local.7",
   "CreatedBy": "WorkerOptimizer contributors",
   "EngineVersion": "5.8"
 }

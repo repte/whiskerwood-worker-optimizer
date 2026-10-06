@@ -27,6 +27,8 @@ existing = set(BP.list_variables(bp))
 for name, kind in (("QueuedActions", "int"), ("BridgeReady", "bool")):
     if name not in existing:
         BP.add_variable(bp, name, kind)
+if "RejectionGuard" not in existing:
+    BP.add_variable(bp, "RejectionGuard", "name")
 if "ActionContext" not in existing:
     BP.add_object_variable(bp, "ActionContext", native("ArcoView"))
 
@@ -35,6 +37,7 @@ definitions = {
     "InitializeBridge": [("Widget", native("ArcoView"))],
     "ValidateAction": params + [("ReportedWorkplace", native("GridActor"))],
     "QueueAction": params,
+    "RejectAction": [("Guard", "name")],
 }
 existing_graphs = {str(g.get_name()) for g in BP.list_graphs(bp)}
 graphs = {}
@@ -87,6 +90,12 @@ set_detail = node("|SetMActiveDetailWidget")
 set_context = "Class|ArcoWidgetBase|SetContext"
 validate_call = "CallFunction|ValidateAction :Snapshot Snapshot :BuildingIndex BuildingIndex :SlotIndex SlotIndex :WorkerIndex WorkerIndex :Fire Fire"
 code = {}
+def reject(guard):
+    return f'(CallFunction|RejectAction :Guard "bridge.{guard}") (return false)'
+
+code["RejectAction"] = f'''(fn RejectAction (Guard)
+    (if (== {g('RejectionGuard')} "None") (Variables|Default|SetRejectionGuard Guard))
+    (return false))'''
 code["RequiredCrewPresent"] = f"""(fn RequiredCrewPresent (Workforce)
     {unpack('WorkerAssignment', 'Workforce', 'wf')}
     (for workerSlot wf_m_workerSlots
@@ -106,54 +115,57 @@ code["InitializeBridge"] = f"""(fn InitializeBridge (Widget)
         (return true))
       (:"Is Not Valid" (return false))))"""
 code["ValidateAction"] = f"""(fn ValidateAction (Snapshot BuildingIndex SlotIndex WorkerIndex Fire ReportedWorkplace)
+    (Variables|Default|SetRejectionGuard "None")
     ({valid} Snapshot
-      (:"Is Not Valid" (return false))
+      (:"Is Not Valid" {reject('snapshot_unavailable')})
       (:"Is Valid"
-        (if (not (and {sg('SnapshotValid')} {sg('CaptureDone')})) (return false))
-        (if (not (Utilities|Array|IsValidIndex {sg('Buildings')} BuildingIndex)) (return false))
-        (if (not (Utilities|Array|IsValidIndex {sg('Workers')} WorkerIndex)) (return false))
+        (if (not (and {sg('SnapshotValid')} {sg('CaptureDone')})) {reject('snapshot_incomplete')})
+        (if (not (Utilities|Array|IsValidIndex {sg('Buildings')} BuildingIndex)) {reject('building_index')})
+        (if (not (Utilities|Array|IsValidIndex {sg('Workers')} WorkerIndex)) {reject('worker_index')})
         (bind building {at(sg('Buildings'), 'BuildingIndex')})
         (bind worker {at(sg('Workers'), 'WorkerIndex')})
         (bind buildingOK (Class|BPWorkforceSnapshot|BuildingUnchanged :self Snapshot :Index BuildingIndex))
-        (if (not buildingOK) (return false))
+        (if (not buildingOK) {reject('building_changed')})
         (bind workerOK (Class|BPWorkforceSnapshot|WorkerUnchanged :self Snapshot :Index WorkerIndex :ReportedWorkplace ReportedWorkplace))
-        (if (not workerOK) (return false))
+        (if (not workerOK) {reject('worker_changed')})
         (bind (known workforce) (Class|BPWorkplaceAdapter|ReadWorkplace :self Snapshot :Building building))
-        (if (not known) (return false))
+        (if (not known) {reject('workplace_unavailable')})
         {unpack('WorkerAssignment', 'workforce', 'wf')}
-        (if wf_bDisabled (return false))
-        (if (not (Utilities|Array|IsValidIndex wf_m_workerSlots SlotIndex)) (return false))
+        (if wf_bDisabled {reject('disabled')})
+        (if (not (Utilities|Array|IsValidIndex wf_m_workerSlots SlotIndex)) {reject('slot_index')})
         {unpack('WorkerSlot', at('wf_m_workerSlots', 'SlotIndex'), 'slot')}
         {unpack('AgentCharacteristics', '(Class|PrototypeAgent|GetMCharacteristics :self worker)', 'ch')}
-        (if (< ch_ID 0) (return false))
+        (if (< ch_ID 0) {reject('worker_id')})
         (if Fire
-          (return (and (== ReportedWorkplace building) (== slot_Agent worker)))
+          (if (not (and (== ReportedWorkplace building) (== slot_Agent worker))) {reject('fire_occupancy')})
+          (return true)
           (else
             (bind roleEligible (Class|BPJobEligibility|LiveCanFillSlot :self Snapshot :Worker worker :Building building :SlotIndex SlotIndex))
-            (if (not roleEligible) (return false))
+            (if (not roleEligible) {reject('hire_role_eligibility')})
             (if (not slot_bIsRequiredToRun)
               (bind crewPresent (CallFunction|RequiredCrewPresent :Workforce workforce))
-              (if (not crewPresent) (return false)))
-            ({valid} ReportedWorkplace (:"Is Valid" (return false))
+              (if (not crewPresent) {reject('optional_before_required')}))
+            ({valid} ReportedWorkplace (:"Is Valid" {reject('worker_not_free')})
               (:"Is Not Valid"
-                ({valid} slot_Agent (:"Is Valid" (return false)) (:"Is Not Valid" (return true))))))))))"""
+                ({valid} slot_Agent (:"Is Valid" {reject('slot_occupied')}) (:"Is Not Valid" (return true))))))))))"""
 code["QueueAction"] = f"""(fn QueueAction (Snapshot BuildingIndex SlotIndex WorkerIndex Fire)
-    (if (not {g('BridgeReady')}) (return false))
-    ({valid} {g('ActionContext')} (:"Is Not Valid" (return false))
+    (Variables|Default|SetRejectionGuard "None")
+    (if (not {g('BridgeReady')}) {reject('not_ready')})
+    ({valid} {g('ActionContext')} (:"Is Not Valid" {reject('context_unavailable')})
       (:"Is Valid"
-        (if (!= ({get_detail}) {g('ActionContext')}) (return false))
-        ({valid} Snapshot (:"Is Not Valid" (return false))
+        (if (!= ({get_detail}) {g('ActionContext')}) {reject('context_changed')})
+        ({valid} Snapshot (:"Is Not Valid" {reject('snapshot_unavailable')})
           (:"Is Valid"
-            (if (not (Utilities|Array|IsValidIndex {sg('Workers')} WorkerIndex)) (return false))
+            (if (not (Utilities|Array|IsValidIndex {sg('Workers')} WorkerIndex)) {reject('worker_index')})
             (bind worker {at(sg('Workers'), 'WorkerIndex')})
-            ({valid} worker (:"Is Not Valid" (return false))
+            ({valid} worker (:"Is Not Valid" {reject('worker_unavailable')})
               (:"Is Valid"
                 (bind workplace (Class|PrototypeAgent|GetWorkplace :self worker))
                 (bind allowed ({validate_call} :ReportedWorkplace workplace))
                 (if (not allowed) (return false))
                 (bind building {at(sg('Buildings'), 'BuildingIndex')})
                 (bind (definition definitionFound) (Class|GridActor|GetGridActorDefinition :self building))
-                (if (not definitionFound) (return false))
+                (if (not definitionFound) {reject('definition_unavailable')})
                 {unpack('AgentCharacteristics', '(Class|PrototypeAgent|GetMCharacteristics :self worker)', 'ch')}
                 ({set_context} :self {g('ActionContext')} :Context building)
                 (if Fire

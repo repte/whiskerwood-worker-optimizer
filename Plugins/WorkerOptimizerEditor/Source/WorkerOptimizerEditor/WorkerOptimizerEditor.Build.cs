@@ -5,6 +5,6 @@ public class WorkerOptimizerEditor : ModuleRules
     public WorkerOptimizerEditor(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-        PrivateDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "UMG", "Slate", "SlateCore", "RenderCore" });
+        PrivateDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "UMG", "UMGEditor", "UnrealEd", "Slate", "SlateCore", "RenderCore", "MovieScene" });
     }
 }

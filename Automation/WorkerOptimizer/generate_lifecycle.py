@@ -13,12 +13,12 @@ api_class = unreal.load_class(None, "/Script/SystemCore.ModAPI")
 bp = unreal.load_asset(ROOT + "/BP_MapLoad")
 if bp is None:
     bp = BP.create(ROOT, "BP_MapLoad", unreal.Actor.static_class())
-refs = {"Controller": "BP_WorkerOptimizer", "Bridge": "BP_ActionBridge", "ActionView": "WBP_ActionContext", "UI": "WBP_WorkerOptimizer", "Hotkey": "BP_HotkeyConfig"}
+refs = {"Controller": "BP_WorkerOptimizer", "Bridge": "BP_ActionBridge", "ActionView": "WBP_ActionContext", "UI": "WBP_WorkerOptimizer", "Hotkey": "BP_HotkeyConfig", "Logbook": "BP_Logbook"}
 existing = set(BP.list_variables(bp))
 for name, cls in [(name, load(asset)) for name, asset in refs.items()] + [("API", api_class)]:
     if name not in existing:
         BP.add_object_variable(bp, name, cls)
-for kind, names in {"bool": "Primary Bound Loaded Ready ShuttingDown", "name": "FailureCode", "float": "NextStartupCheck"}.items():
+for kind, names in {"bool": "Primary Bound Loaded Ready ShuttingDown HasPerformancePrevious", "name": "FailureCode", "float": "NextStartupCheck NextHistoryCheck PerformancePreviousFraction PerformanceUIFraction", "int": "PerformancePreviousSeconds PerformanceUISeconds PerformanceUIPhase"}.items():
     for name in names.split():
         if name not in existing:
             BP.add_variable(bp, name, kind)
@@ -32,8 +32,12 @@ definitions = {
     "PumpUI": [],
     "ObserveReadiness": [("WorldReady", "bool"), ("PlayerReady", "bool")],
     "PumpLifecycle": [],
+    "MeasureUI": [],
+    "BindDay": [], "UnbindDay": [], "OnDayStart": [("day", "int")],
+    "ReadCalendar": [], "PollAutomatic": [],
+    "PumpHistory": [],
 }
-void_functions = {"BindLoading", "UnbindLoading", "OnLoaded"}
+void_functions = {"BindLoading", "UnbindLoading", "OnLoaded", "BindDay", "UnbindDay", "OnDayStart"}
 graphs = {}
 existing_graphs = {str(g.get_name()) for g in BP.list_graphs(bp)}
 for name, params in definitions.items():
@@ -44,7 +48,10 @@ for name, params in definitions.items():
                 BP.add_function_param(graphs[name], param, kind, True)
             else:
                 BP.add_object_function_param(graphs[name], param, kind, True)
-        if name not in void_functions:
+        if name == "ReadCalendar":
+            for param, kind in (("Valid", "bool"), ("Year", "int"), ("Day", "int")):
+                BP.add_function_param(graphs[name], param, kind, False)
+        elif name not in void_functions:
             BP.add_function_param(graphs[name], "Result", "bool", False)
 BP.compile_blueprint(bp)
 node_types = BP.find_node_types(graphs["ClaimWorld"], "", [])
@@ -116,12 +123,47 @@ code["AttachAPI"] = f"""(fn AttachAPI (InputAPI)
     (if {g('Bound')} (return (== InputAPI {g('API')})))
     (bind claimed (CallFunction|ClaimWorld)) (if (not claimed) (return false))
     (if (not {present('InputAPI')}) {fail('mod_api_unavailable')})
-    {put('API', 'InputAPI')} (CallFunction|BindLoading) {put('Bound', 'true')}
+    {put('API', 'InputAPI')} (CallFunction|BindLoading) (CallFunction|BindDay) {put('Bound', 'true')}
     {trace('bound')} (return true))"""
 code["BindLoading"] = f"""(fn BindLoading ()
     (EventDispatchers|BindEventtoOnLoadingFinished :self {g('API')}))"""
 code["UnbindLoading"] = f"""(fn UnbindLoading ()
     (EventDispatchers|UnbindEventfromOnLoadingFinished :self {g('API')}))"""
+code["BindDay"] = f"""(fn BindDay () (EventDispatchers|BindEventtoOnDayStart :self {g('API')}))"""
+code["UnbindDay"] = f"""(fn UnbindDay () (EventDispatchers|UnbindEventfromOnDayStart :self {g('API')}))"""
+code["ReadCalendar"] = f"""(fn ReadCalendar ()
+    (bind (valid systems) (Class|ArcoSystems|GetArcoSys))
+    (if (or (not valid) (not {present('systems')})) (return false -1 -1))
+    (bind clock (Class|ArcoSystems|GetMWorldTime :self systems))
+    (if (not {present('clock')}) (return false -1 -1))
+    (return true (Class|WorldTime|GetMYear :self clock) (Class|WorldTime|GetMDay :self clock)))"""
+code["OnDayStart"] = f"""(fn OnDayStart (day)
+    (if (or {g('ShuttingDown')} (or (not {g('Ready')}) (not {present(g('Controller'))}))) (return))
+    (bind (valid year currentDay) (CallFunction|ReadCalendar))
+    (if (not valid) (return))
+    (bind scheduler (Class|BPWorkerOptimizer|GetAutoAssignment :self {g('Controller')}))
+    (if (not {present('scheduler')}) (return))
+    (Class|BPAutoAssignment|ObserveDay :self scheduler :Year year :Day day))"""
+code["PollAutomatic"] = f"""(fn PollAutomatic ()
+    (if (or {g('ShuttingDown')} (or (not {g('Ready')}) (not {present(g('Controller'))}))) (return false))
+    (bind scheduler (Class|BPWorkerOptimizer|GetAutoAssignment :self {g('Controller')}))
+    (bind settings (Class|BPWorkerOptimizer|GetSettings :self {g('Controller')}))
+    (if (or (not {present('scheduler')}) (not {present('settings')})) (return false))
+    (bind mode (Class|BPPrioritySettings|ReadAutoMode :self settings :Context self))
+    (bind now (Class|BPWorkerOptimizer|ReadSchedulingClock :self {g('Controller')}))
+    (if (== mode "off")
+      (Class|BPAutoAssignment|Configure :self scheduler :Mode mode :NowSeconds now :Year -1 :Day -1)
+      (return false))
+    (bind (valid year day) (CallFunction|ReadCalendar))
+    (if (not valid) (return false))
+    (Class|BPAutoAssignment|Configure :self scheduler :Mode mode :NowSeconds now :Year year :Day day)
+    (bind runner (Class|BPWorkerOptimizer|GetRunner :self {g('Controller')}))
+    (bind busy (or (Class|BPWorkerOptimizer|GetRunActive :self {g('Controller')})
+      (or (Class|BPApplicationRunner|GetActive :self runner) (Class|BPApplicationRunner|GetWaiting :self runner))))
+    (bind ready (and (Class|BPWorkerOptimizer|GetInitialized :self {g('Controller')}) (Class|BPPrioritySettings|GetPolicyKeysReady :self settings)))
+    (bind due (Class|BPAutoAssignment|Poll :self scheduler :NowSeconds now :Paused (Game|IsGamePaused) :Ready ready :Busy busy))
+    (if (not due) (return false))
+    (bind accepted (Class|BPWorkerOptimizer|BeginTriggeredRun :self {g('Controller')} :Trigger mode)) (return accepted))"""
 code["OnLoaded"] = f"""(fn OnLoaded ()
     (if {present(g('API'))} {trace('loading_finished')})
     (if (or {g('ShuttingDown')} (or (not {g('Bound')}) (not {g('Primary')}))) (return))
@@ -137,7 +179,13 @@ code["ObserveReadiness"] = f"""(fn ObserveReadiness (WorldReady PlayerReady)
 # Use the game's explicit init phase; never infer readiness from elapsed time.
 code["PumpLifecycle"] = f"""(fn PumpLifecycle ()
     (if {g('ShuttingDown')} (return false))
-    (if {g('Ready')} (bind pumped (CallFunction|PumpUI)) (return pumped))
+    (if {g('Ready')}
+      (CallFunction|PumpHistory)
+      (CallFunction|PollAutomatic)
+      (if (and {present(g('Controller'))} (Class|BPWorkerOptimizer|GetMeasurePerformance :self {g('Controller')}))
+        (bind measured (CallFunction|MeasureUI)) (return measured))
+      {put('HasPerformancePrevious', 'false')}
+      (bind pumped (CallFunction|PumpUI)) (return pumped))
     (bind now (Utilities|Time|GetRealTimeSeconds))
     (if (< now {g('NextStartupCheck')}) (return false))
     {put('NextStartupCheck', '(+ now 0.5)')}
@@ -151,6 +199,28 @@ code["PumpLifecycle"] = f"""(fn PumpLifecycle ()
         (if observed (bind installed (CallFunction|CreateSession)) (return installed))
         (return false))
       (:CastFailed (return false))))"""
+code["PumpHistory"] = f"""(fn PumpHistory ()
+    (if (or {g('ShuttingDown')} (not {present(g('Logbook'))})) (return false))
+    (bind now (Utilities|Time|GetRealTimeSeconds))
+    (if (>= now {g('NextHistoryCheck')})
+      {put('NextHistoryCheck','(+ now 0.5)')}
+      (bind (valid identity) {invoke('Logbook','ResolveIdentity',':Context self')})
+      (if (not (Utilities|String|EqualExactly(String) identity (Class|BPLogbook|GetActiveIdentity :self {g('Logbook')})))
+        {invoke('Logbook','BeginLoad',':Identity identity')}))
+    (if (and (Class|BPLogbook|GetReady :self {g('Logbook')}) (not (Class|BPLogbook|GetDirty :self {g('Logbook')}))) (return false))
+    (if (and (== (Utilities|String|Len (Class|BPLogbook|GetActiveIdentity :self {g('Logbook')})) 0)
+      (not (Class|BPLogbook|GetDirty :self {g('Logbook')}))) (return false))
+    (bind (startSeconds startFraction) (Class|BPWorkerOptimizer|ReadClockParts :self {g('Controller')}))
+    (bind metrics (Class|BPWorkerOptimizer|GetMetrics :self {g('Controller')}))
+    (for unit (range 64)
+      {invoke('Logbook','AdvanceStorage')}
+      (if (and (Class|BPLogbook|GetInFlight :self {g('Logbook')})
+        (== (Utilities|Array|Length (Class|BPLogbook|GetPendingReports :self {g('Logbook')})) 0)) (break))
+      (if (and (Class|BPLogbook|GetReady :self {g('Logbook')}) (not (Class|BPLogbook|GetDirty :self {g('Logbook')}))) (break))
+      (bind (endSeconds endFraction) (Class|BPWorkerOptimizer|ReadClockParts :self {g('Controller')}))
+      (bind elapsed (Class|BPPerformanceMetrics|ElapsedSeconds :self metrics :StartSeconds startSeconds :StartFraction startFraction :EndSeconds endSeconds :EndFraction endFraction))
+      (if (>= elapsed 0.002) (break)))
+    (return true))"""
 code["InstallSession"] = f"""(fn InstallSession (InputController InputBridge InputView)
     (if (or {g('ShuttingDown')} (or (not {g('Loaded')}) (not {g('Primary')}))) (return false))
     (if {g('Ready')} (return (and (== InputController {g('Controller')}) (and (== InputBridge {g('Bridge')}) (== InputView {g('ActionView')})))))
@@ -162,6 +232,11 @@ code["InstallSession"] = f"""(fn InstallSession (InputController InputBridge Inp
     (bind controllerReady {invoke('Controller', 'Initialize', ':InputContext self :InputBridge InputBridge', 'InputController')})
     (if (not controllerReady) {fail('controller_initialization_failed')})
     {put('Controller', 'InputController')} {put('Bridge', 'InputBridge')} {put('ActionView', 'InputView')}
+    (bind history (Game|ConstructObjectfromClass :Class "{ROOT}/BP_Logbook.BP_Logbook_C" :self self))
+    {put('Logbook','history')}
+    (Class|BPWorkerOptimizer|SetLogbook :self InputController :Logbook history)
+    (bind (identityValid identity) {invoke('Logbook','ResolveIdentity',':Context self')})
+    {invoke('Logbook','BeginLoad',':Identity identity')}
     {put('Ready', 'true')} {put('FailureCode', '"None"')} (return true))"""
 code["CreateSession"] = f"""(fn CreateSession ()
     (if (or {g('ShuttingDown')} (or (not {g('Loaded')}) (not {g('Primary')}))) (return false))
@@ -209,19 +284,46 @@ code["CreateUI"] = f"""(fn CreateUI ()
 code["PumpUI"] = f"""(fn PumpUI ()
     (if (or {g('ShuttingDown')} (not {g('Ready')})) (return false))
     (if (or (not {present(g('UI'))}) (not {present(g('Hotkey'))})) (return false))
-    {invoke('UI', 'RefreshUI')}
     (bind capturing {invoke('UI', 'IsCapturing')})
     (if capturing (return true))
     (bind player (Game|GetPlayerController :PlayerIndex 0))
     (bind pressed {invoke('Hotkey', 'PollKey', ':Player player')})
     (if pressed {invoke('UI', 'ToggleButton')}) (return true))"""
+code["MeasureUI"] = f"""(fn MeasureUI ()
+    (if (not {present(g('Controller'))}) (return false))
+    (if (not (Class|BPWorkerOptimizer|GetMeasurePerformance :self {g('Controller')})) (return false))
+    (bind metrics (Class|BPWorkerOptimizer|GetMetrics :self {g('Controller')}))
+    (if (not {present('metrics')}) (return false))
+    (bind (startSeconds startFraction) (Class|BPWorkerOptimizer|ReadClockParts :self {g('Controller')}))
+    {put('PerformanceUISeconds', 'startSeconds')} {put('PerformanceUIFraction', 'startFraction')}
+    {put('PerformanceUIPhase', f'(select (Class|BPWorkerOptimizer|GetRunActive :self {g("Controller")}) 11 10)')}
+    (bind pumped (CallFunction|PumpUI))
+    (bind (endSeconds endFraction) (Class|BPWorkerOptimizer|ReadClockParts :self {g('Controller')}))
+    (bind uiSeconds (Class|BPPerformanceMetrics|ElapsedSeconds :self metrics
+      :StartSeconds {g('PerformanceUISeconds')} :StartFraction {g('PerformanceUIFraction')}
+      :EndSeconds endSeconds :EndFraction endFraction))
+    (Class|BPPerformanceMetrics|RecordSample :self metrics :Phase {g('PerformanceUIPhase')} :Seconds uiSeconds)
+    (if {g('HasPerformancePrevious')}
+      (bind frameSeconds (Class|BPPerformanceMetrics|ElapsedSeconds :self metrics
+        :StartSeconds {g('PerformancePreviousSeconds')} :StartFraction {g('PerformancePreviousFraction')}
+        :EndSeconds {g('PerformanceUISeconds')} :EndFraction {g('PerformanceUIFraction')}))
+      (Class|BPPerformanceMetrics|RecordSample :self metrics :Phase 9 :Seconds frameSeconds))
+    {put('PerformancePreviousSeconds', g('PerformanceUISeconds'))}
+    {put('PerformancePreviousFraction', g('PerformanceUIFraction'))} {put('HasPerformancePrevious', 'true')}
+    (return pumped))"""
 code["ReleaseSession"] = f"""(fn ReleaseSession ()
-    {put('Ready', 'false')}
+    {put('Ready', 'false')} {put('HasPerformancePrevious', 'false')}
     (if {present(g('UI'))} {invoke('UI', 'ShutdownUI')} (Widget|RemovefromParent :self {g('UI')}))
     (Variables|Default|SetUI) (Variables|Default|SetHotkey)
     (if {present(g('Controller'))}
       (if (== (Actor|GetOwner :self {g('Controller')}) self)
-        {invoke('Controller', 'Shutdown')} (Actor|DestroyActor :self {g('Controller')})))
+        {invoke('Controller', 'Shutdown')}))
+    (if {present(g('Logbook'))}
+      (bind flushed {invoke('Logbook','CloseStorage')})
+      (if (and (not flushed) {present(g('API'))})
+        (Class|ModAPI|LogMessage :self {g('API')} :Msg "Worker Optimizer history: history_unflushed" :doPrependDate true)))
+    (if {present(g('Controller'))}
+      (if (== (Actor|GetOwner :self {g('Controller')}) self) (Actor|DestroyActor :self {g('Controller')})))
     (if {present(g('Bridge'))}
       (if (== (Actor|GetOwner :self {g('Bridge')}) self) (Actor|DestroyActor :self {g('Bridge')})))
     (if {present(g('ActionView'))} (Widget|RemovefromParent :self {g('ActionView')}))
@@ -230,14 +332,14 @@ code["ReleaseSession"] = f"""(fn ReleaseSession ()
 code["Shutdown"] = f"""(fn Shutdown ()
     (if {g('ShuttingDown')} (return true))
     {put('ShuttingDown', 'true')}
-    (if (and {g('Bound')} {present(g('API'))}) (CallFunction|UnbindLoading))
+    (if (and {g('Bound')} {present(g('API'))}) (CallFunction|UnbindLoading) (CallFunction|UnbindDay))
     {put('Bound', 'false')} {put('Primary', 'false')}
     (CallFunction|ReleaseSession) (Variables|Default|SetAPI) (return true))"""
 for source in code.values():
     blueprint_dsl.parse(source)
 with toolset_registry.tool_raising_exceptions():
     for name, source in code.items():
-        if name in ("BindLoading", "UnbindLoading"):
+        if name in ("BindLoading", "UnbindLoading", "BindDay", "UnbindDay"):
             continue
         unreal.log("WO_LIFECYCLE_WRITE " + name)
         BP.write_graph_dsl(graphs[name], source)
@@ -250,7 +352,9 @@ with toolset_registry.tool_raising_exceptions():
             BP.set_pin_value(next(p.pin_id for p in comparisons[0].input_pins if p.name == "B"), "DONE")
     # Both delegates reference the same void function; never unbind all listeners.
     for function, node_type in (("BindLoading", "EventDispatchers|BindEventtoOnLoadingFinished"),
-                                ("UnbindLoading", "EventDispatchers|UnbindEventfromOnLoadingFinished")):
+                                ("UnbindLoading", "EventDispatchers|UnbindEventfromOnLoadingFinished"),
+                                ("BindDay", "EventDispatchers|BindEventtoOnDayStart"),
+                                ("UnbindDay", "EventDispatchers|UnbindEventfromOnDayStart")):
         graph = graphs[function]
         # The regular writer compiles immediately. Wire the required delegate first.
         blueprint_dsl.Transpiler(
@@ -266,7 +370,7 @@ with toolset_registry.tool_raising_exceptions():
         info = BP.get_node_infos([create])[0]
         BP.connect_pins(next(p.pin_id for p in info.output_pins if p.name == "OutputDelegate"),
                         next(p.pin_id for p in target.input_pins if p.name == "Delegate"))
-        BP.set_create_event_function(create, "OnLoaded")
+        BP.set_create_event_function(create, "OnDayStart" if function in ("BindDay", "UnbindDay") else "OnLoaded")
     BP.write_graph_dsl(BP.get_graph(bp, "EventGraph"), """
       (event EventBeginPlay () (CallFunction|BeginLifecycle))
       (event EventTick (DeltaSeconds) (CallFunction|PumpLifecycle))

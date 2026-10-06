@@ -18,20 +18,21 @@ elif BP.get_parent(bp) != parent:
 building_class = unreal.load_class(None, "/Script/ProjectArco.GridActor")
 worker_class = unreal.load_class(None, "/Script/ProjectArco.Prototype_Agent")
 existing = set(BP.list_variables(bp))
-for name, cls in (("Buildings", building_class), ("CompatibilityBuildings", building_class), ("WorkerWorkplaces", building_class), ("Workers", worker_class), ("ProtectedWorkers", worker_class)):
+for name, cls in (("Buildings", building_class), ("CompatibilityBuildings", building_class), ("WorkerWorkplaces", building_class), ("Workers", worker_class), ("ProtectedWorkers", worker_class), ("PausedBuildingActors", building_class)):
     if name not in existing:
         BP.add_object_variable(bp, name, cls, container_type=ContainerType.ARRAY)
 for name in ("BuildingQueue", "WorkerQueue"):
     if name not in existing:
         BP.add_object_variable(bp, name, unreal.Actor.static_class(), container_type=ContainerType.ARRAY)
-if "PrefabKeys" not in existing:
-    BP.add_variable(bp, "PrefabKeys", "name", container_type=ContainerType.ARRAY)
+for name in ("PrefabKeys", "PausedPrefabKeys", "CompatibilityPrefabKeys"):
+    if name not in existing:
+        BP.add_variable(bp, name, "name", container_type=ContainerType.ARRAY)
 if "CompatibilityMessages" not in existing:
     BP.add_variable(bp, "CompatibilityMessages", "string", container_type=ContainerType.ARRAY)
 for name, struct in (("Workforces", "WorkerAssignment"), ("Characteristics", "AgentCharacteristics"), ("States", "AgentState")):
     if name not in existing:
         BP.add_struct_variable(bp, name, unreal.load_object(None, "/Script/ProjectArco." + struct), container_type=ContainerType.ARRAY)
-for name in ("BuildingIds", "WorkerIds"):
+for name in ("BuildingIds", "WorkerIds", "PausedBuildingIds", "CompatibilityBuildingIds"):
     if name not in existing:
         BP.add_variable(bp, name, "int", container_type=ContainerType.ARRAY)
 for name in ("WorkerPhase", "SnapshotValid", "CaptureDone"):
@@ -40,6 +41,18 @@ for name in ("WorkerPhase", "SnapshotValid", "CaptureDone"):
 for name in ("CaptureIndex", "CaptureStage"):
     if name not in existing:
         BP.add_variable(bp, name, "int")
+for name, kind in (("ValidationGuard", "name"), ("ValidationIndex", "int"), ("ValidationCaptured", "string"), ("ValidationLive", "string"), ("ValidationProbeDepth", "int")):
+    if name not in existing: BP.add_variable(bp, name, kind)
+for kind, names in {"bool": "ProtectionActive ProtectionHaveSlots", "int": "ProtectionComponentIndex ProtectionSlotIndex LastProtectionWork"}.items():
+    for name in names.split():
+        if name not in existing:
+            BP.add_variable(bp, name, kind)
+if "ProtectionBuilding" not in existing:
+    BP.add_object_variable(bp, "ProtectionBuilding", building_class)
+if "ProtectionComponents" not in existing:
+    BP.add_object_variable(bp, "ProtectionComponents", unreal.ActorComponent.static_class(), container_type=ContainerType.ARRAY)
+if "ProtectionSlots" not in existing:
+    BP.add_struct_variable(bp, "ProtectionSlots", unreal.load_object(None, "/Script/ProjectArco.WorkerSlot"), container_type=ContainerType.ARRAY)
 
 definitions = {
     "HasObject": ([("Object", unreal.Object.static_class())], True),
@@ -47,6 +60,7 @@ definitions = {
     "RecordCompatibilityIssue": ([("Building", building_class)], True),
     "ObserveUnsupportedDefinition": ([("Building", building_class), ("MaxAgents", "int"), ("HouseTier", "int"), ("Found", "bool")], True),
     "ProtectBuilding": ([("Building", building_class)], False),
+    "AdvanceProtection": ([], False),
     "AddBuilding": ([("Building", building_class)], True),
     "FinishBuildings": ([], False),
     "WorkerUsable": ([("Worker", worker_class)], True),
@@ -57,10 +71,13 @@ definitions = {
     "WorkerIdentityUnchanged": ([("Index", "int")], True),
     "WorkerUnchanged": ([("Index", "int"), ("ReportedWorkplace", building_class)], True),
     "ConfirmAction": ([("BuildingIndex", "int"), ("SlotIndex", "int"), ("WorkerIndex", "int"), ("Fire", "bool"), ("ReportedWorkplace", building_class)], True),
+    "ConfirmActionProbe": ([("BuildingIndex", "int"), ("SlotIndex", "int"), ("WorkerIndex", "int"), ("Fire", "bool"), ("ReportedWorkplace", building_class)], True),
     "BeginCapture": ([("WorldContext", unreal.Object.static_class())], False),
     "AdvanceCapture": ([], False),
     "CaptureBuildingActor": ([("Candidate", unreal.Actor.static_class())], True),
     "CaptureWorkerActor": ([("Candidate", unreal.Actor.static_class())], True),
+    "ResetValidationFailure": ([], False),
+    "RecordValidationFailure": ([("Guard", "name"), ("Index", "int"), ("Captured", "string"), ("Live", "string")], True),
 }
 existing_graphs = {str(g.get_name()) for g in BP.list_graphs(bp)}
 graphs = {}
@@ -113,16 +130,47 @@ def unpack(struct_name, value, prefix):
 def invalid_state(prefix):
     return f"(or (or {prefix}_isDummy {prefix}_isInNautical) (or {prefix}_isBeingManhandled {prefix}_pendingRemoval))"
 
+def diagnostic(guard, captured='"unknown"', live='"unknown"'):
+    return f'(CallFunction|RecordValidationFailure :Guard "{guard}" :Index Index :Captured {captured} :Live {live}) (return false)'
+
+def text(value, kind="Integer"):
+    return f"(Utilities|String|ToString({kind}) {value})"
+
+def append(*values):
+    result = values[0]
+    for value in values[1:]: result = f'(Utilities|String|Append :A {result} :B {value})'
+    return result
+
+def pair_summary(prefix):
+    return append('"id="', text(prefix+'_ID'), '"/guild="', text(prefix+'_guild', 'Name'), '"/edu="', text(prefix+'_education', 'Byte'), '"/base="', text(prefix+'_base_productivity', 'Float'))
+
+def role_summary(prefix):
+    return append('"slot="', text('i'), '"/edu="', text(prefix+'_educationRequirement', 'Byte'), '"/required="', f'(select {prefix}_bIsRequiredToRun "true" "false")', '"/bonus="', f'(select {prefix}_bGivesBonus "true" "false")')
+
 
 code = {}
+code["ResetValidationFailure"] = f'''(fn ResetValidationFailure ()
+    {set_v('ValidationGuard', '"None"')} {set_v('ValidationIndex', '-1')}
+    {set_v('ValidationCaptured', '""')} {set_v('ValidationLive', '""')})'''
+code["RecordValidationFailure"] = f'''(fn RecordValidationFailure (Guard Index Captured Live)
+    (if (> {g('ValidationProbeDepth')} 0) (return false))
+    (if (== {g('ValidationGuard')} "None")
+      {set_v('ValidationGuard', 'Guard')} {set_v('ValidationIndex', 'Index')}
+      {set_v('ValidationCaptured', 'Captured')} {set_v('ValidationLive', 'Live')})
+    (return false))'''
 code["HasObject"] = """(fn HasObject (Object)
     (Utilities|IsValid Object (:"Is Valid" (return true)) (:"Is Not Valid" (return false))))"""
-arrays = "Buildings Workforces Workers WorkerWorkplaces ProtectedWorkers Characteristics States BuildingIds WorkerIds PrefabKeys BuildingQueue WorkerQueue CompatibilityBuildings CompatibilityMessages".split()
+arrays = "Buildings Workforces Workers WorkerWorkplaces ProtectedWorkers Characteristics States BuildingIds WorkerIds PrefabKeys BuildingQueue WorkerQueue CompatibilityBuildings CompatibilityMessages ProtectionComponents ProtectionSlots PausedBuildingActors PausedBuildingIds PausedPrefabKeys CompatibilityBuildingIds CompatibilityPrefabKeys".split()
 code["ResetSnapshot"] = f"""(fn ResetSnapshot ()
+    (CallFunction|ResetValidationFailure)
+    {set_v('ValidationProbeDepth', '0')}
     {' '.join(f'(Utilities|Array|Clear {g(n)})' for n in arrays)}
     {set_v('WorkerPhase', 'false')} {set_v('SnapshotValid', 'true')}
-    {set_v('CaptureDone', 'true')} {set_v('CaptureIndex', '0')} {set_v('CaptureStage', '0')})"""
-code["FinishBuildings"] = f"(fn FinishBuildings () {set_v('WorkerPhase', 'true')})"
+    {set_v('CaptureDone', 'true')} {set_v('CaptureIndex', '0')} {set_v('CaptureStage', '0')}
+    {set_v('ProtectionActive', 'false')} {set_v('ProtectionHaveSlots', 'false')} {set_v('LastProtectionWork', '0')}
+    {set_v('ProtectionComponentIndex', '0')} {set_v('ProtectionSlotIndex', '0')}
+    (Variables|Default|SetProtectionBuilding))"""
+code["FinishBuildings"] = f"(fn FinishBuildings () (if {g('ProtectionActive')} (return)) {set_v('WorkerPhase', 'true')})"
 code["RecordCompatibilityIssue"] = f"""(fn RecordCompatibilityIssue (Building)
     (if (not (CallFunction|HasObject :Object Building)) (return false))
     (if (or (not (Class|GridActor|GetIsPlayerOwned :self Building)) (<= (Class|GridActor|GetHealth :self Building) 0)) (return false))
@@ -136,6 +184,7 @@ code["RecordCompatibilityIssue"] = f"""(fn RecordCompatibilityIssue (Building)
         :A (Utilities|String|Append :A " (building " :B (Utilities|String|ToString(Integer) (Class|GridActor|GetID :self Building)))
         :B "); existing workers preserved.")))
     {add('CompatibilityBuildings', 'Building')} {add('CompatibilityMessages', 'message')}
+    {add('CompatibilityBuildingIds', '(Class|GridActor|GetID :self Building)')} {add('CompatibilityPrefabKeys', 'prefab_prefabKey')}
     (bind api (Class|ModAPI|GetModAPI :WorldContext Building))
     (if (CallFunction|HasObject :Object api)
       (Class|ModAPI|LogMessage :self api :WorldContext Building :Msg message :doPrependDate true))
@@ -144,6 +193,13 @@ code["ObserveUnsupportedDefinition"] = """(fn ObserveUnsupportedDefinition (Buil
     (if (or (not Found) (or (<= MaxAgents 0) (> HouseTier 0))) (return false))
     (bind reported (CallFunction|RecordCompatibilityIssue :Building Building)) (return reported))"""
 code["ProtectBuilding"] = f"""(fn ProtectBuilding (Building)
+    (if (not (CallFunction|HasObject :Object Building)) (return))
+    (if (not {g('CaptureDone')})
+      {set_v('ProtectionBuilding', 'Building')}
+      (bind components (Actor|GetComponentsbyClass :self Building :ComponentClass "/Script/Engine.ActorComponent"))
+      {set_v('ProtectionComponents', 'components')}
+      {set_v('ProtectionComponentIndex', '0')} {set_v('ProtectionSlotIndex', '0')}
+      {set_v('ProtectionHaveSlots', 'false')} {set_v('ProtectionActive', 'true')} (return))
     (Utilities|IsValid Building
       (:"Is Valid"
         (bind components (Actor|GetComponentsbyClass :self Building :ComponentClass "/Script/Engine.ActorComponent"))
@@ -159,6 +215,27 @@ code["ProtectBuilding"] = f"""(fn ProtectBuilding (Building)
                 (:"Is Valid" {add('ProtectedWorkers', 'slot_Agent', True)})
                 (:"Is Not Valid"))))))
       (:"Is Not Valid")))"""
+code["AdvanceProtection"] = f"""(fn AdvanceProtection ()
+    {set_v('LastProtectionWork', '0')}
+    (if (not {g('ProtectionActive')}) (return))
+    (if (>= {g('ProtectionComponentIndex')} (Utilities|Array|Length {g('ProtectionComponents')}))
+      {set_v('ProtectionActive', 'false')} {set_v('ProtectionHaveSlots', 'false')}
+      (Utilities|Array|Clear {g('ProtectionComponents')}) (Utilities|Array|Clear {g('ProtectionSlots')})
+      (Variables|Default|SetProtectionBuilding) (return))
+    (if (not {g('ProtectionHaveSlots')})
+      (bind (known workforce) (CallFunction|ReadComponent :component {item('ProtectionComponents', g('ProtectionComponentIndex'))}))
+      (if known
+        {unpack('WorkerAssignment', 'workforce', 'wf')}
+        {set_v('ProtectionSlots', 'wf_m_workerSlots')}
+        (if (> (Utilities|Array|Length wf_m_workerSlots) 0) (CallFunction|RecordCompatibilityIssue :Building {g('ProtectionBuilding')}))
+        {set_v('ProtectionHaveSlots', 'true')} {set_v('ProtectionSlotIndex', '0')}
+        (else {set_v('ProtectionComponentIndex', f'(+ {g("ProtectionComponentIndex")} 1)')})) (return))
+    (if (>= {g('ProtectionSlotIndex')} (Utilities|Array|Length {g('ProtectionSlots')}))
+      (Utilities|Array|Clear {g('ProtectionSlots')}) {set_v('ProtectionHaveSlots', 'false')}
+      {set_v('ProtectionComponentIndex', f'(+ {g("ProtectionComponentIndex")} 1)')} (return))
+    {unpack('WorkerSlot', item('ProtectionSlots', g('ProtectionSlotIndex')), 'slot')}
+    (if (CallFunction|HasObject :Object slot_Agent) {add('ProtectedWorkers', 'slot_Agent', True)})
+    {set_v('LastProtectionWork', '1')} {set_v('ProtectionSlotIndex', f'(+ {g("ProtectionSlotIndex")} 1)')})"""
 code["AddBuilding"] = f"""(fn AddBuilding (Building)
     (if {g('WorkerPhase')} (return false))
     (Utilities|IsValid Building
@@ -170,6 +247,12 @@ code["AddBuilding"] = f"""(fn AddBuilding (Building)
           (bind (definition found) (Class|GridActor|GetGridActorDefinition :self Building))
           {unpack('GridActorDefinitionMasterSyncFormat', 'definition', 'd')}
           (CallFunction|ObserveUnsupportedDefinition :Building Building :MaxAgents d_maxAgents_contextual :HouseTier d_asHouseTier :Found found))
+        (if (and known (and wf_bDisabled (and (Class|GridActor|GetIsPlayerOwned :self Building)
+            (and (> (Class|GridActor|GetHealth :self Building) 0) (> (Utilities|Array|Length wf_m_workerSlots) 0)))))
+          (if (not {contains('PausedBuildingActors', 'Building')})
+            {unpack('PrefabInfo', '(Class|GridActor|GetPrefabInfo :self Building)', 'paused')}
+            {add('PausedBuildingActors', 'Building')} {add('PausedBuildingIds', '(Class|GridActor|GetID :self Building)')}
+            {add('PausedPrefabKeys', 'paused_prefabKey')}))
         (if (or (not known) (or wf_bDisabled (or (not (Class|GridActor|GetIsPlayerOwned :self Building))
             (or (<= (Class|GridActor|GetHealth :self Building) 0) (== (Utilities|Array|Length wf_m_workerSlots) 0)))))
           (CallFunction|ProtectBuilding :Building Building) (return false))
@@ -215,57 +298,56 @@ code["AddWorker"] = f"""(fn AddWorker (Worker ReportedWorkplace)
             (return storedFree))))
       (:"Is Not Valid" (return false))))"""
 code["BuildingMatchesExpected"] = f"""(fn BuildingMatchesExpected (Index ChangedSlot ExpectedOccupant)
-    (if (< ChangedSlot -1) (return false))
-    (if (not (Utilities|Array|IsValidIndex {g('Buildings')} Index)) (return false))
+    (if (< ChangedSlot -1) {diagnostic('building.changed_slot_index', '"-1_or_slot"', text('ChangedSlot'))})
+    (if (not (Utilities|Array|IsValidIndex {g('Buildings')} Index)) {diagnostic('building.index', text(f'(Utilities|Array|Length {g("Buildings")})'), text('Index'))})
     (bind building {item('Buildings')})
     (Utilities|IsValid building
       (:"Is Valid"
-        (if (or (not (Class|GridActor|GetIsPlayerOwned :self building)) (<= (Class|GridActor|GetHealth :self building) 0)) (return false))
-        (if (!= (Class|GridActor|GetID :self building) {item('BuildingIds')}) (return false))
+        (if (or (not (Class|GridActor|GetIsPlayerOwned :self building)) (<= (Class|GridActor|GetHealth :self building) 0)) {diagnostic('building.ownership_or_health', '"owned=true/health>0"', append('"owned="', '(select (Class|GridActor|GetIsPlayerOwned :self building) "true" "false")', '"/health="', text('(Class|GridActor|GetHealth :self building)', 'Float')))})
+        (if (!= (Class|GridActor|GetID :self building) {item('BuildingIds')}) {diagnostic('building.id', text(item('BuildingIds')), text('(Class|GridActor|GetID :self building)'))})
         {unpack('PrefabInfo', '(Class|GridActor|GetPrefabInfo :self building)', 'prefab')}
-        (if (!= prefab_prefabKey {item('PrefabKeys')}) (return false))
+        (if (!= prefab_prefabKey {item('PrefabKeys')}) {diagnostic('building.prefab', text(item('PrefabKeys'), 'Name'), text('prefab_prefabKey', 'Name'))})
         (bind (known workforce) (CallFunction|ReadWorkplace :Building building))
-        (if (not known) (return false))
+        (if (not known) {diagnostic('building.workplace_read', '"known"', '"unavailable"')})
         {unpack('WorkerAssignment', 'workforce', 'live')}
         {unpack('WorkerAssignment', item('Workforces'), 'old')}
-        (if (or live_bDisabled (!= live_bOvertime old_bOvertime)) (return false))
-        (if (!= (Utilities|Array|Length live_m_workerSlots) (Utilities|Array|Length old_m_workerSlots)) (return false))
-        (if (>= ChangedSlot (Utilities|Array|Length live_m_workerSlots)) (return false))
+        (if (or live_bDisabled (!= live_bOvertime old_bOvertime)) {diagnostic('building.disabled_or_overtime', '(select old_bOvertime "overtime" "regular")', '(select live_bDisabled "disabled" (select live_bOvertime "overtime" "regular"))')})
+        (if (!= (Utilities|Array|Length live_m_workerSlots) (Utilities|Array|Length old_m_workerSlots)) {diagnostic('building.slot_count', text('(Utilities|Array|Length old_m_workerSlots)'), text('(Utilities|Array|Length live_m_workerSlots)'))})
+        (if (>= ChangedSlot (Utilities|Array|Length live_m_workerSlots)) {diagnostic('building.changed_slot_index', text('(Utilities|Array|Length live_m_workerSlots)'), text('ChangedSlot'))})
         (for i (range (Utilities|Array|Length live_m_workerSlots))
           {unpack('WorkerSlot', '(Utilities|Array|Get(acopy) :Array live_m_workerSlots :"Dimension 1" i)', 'a')}
           {unpack('WorkerSlot', '(Utilities|Array|Get(acopy) :Array old_m_workerSlots :"Dimension 1" i)', 'b')}
           (if (== i ChangedSlot)
-            (if (!= a_Agent ExpectedOccupant) (return false))
-            (else (if (!= a_Agent b_Agent) (return false))))
+            (if (!= a_Agent ExpectedOccupant) {diagnostic('building.changed_slot_occupant', append('"slot="', text('i'), '"/agent="', text('ExpectedOccupant', 'Object')), append('"slot="', text('i'), '"/agent="', text('a_Agent', 'Object')))})
+            (else (if (!= a_Agent b_Agent) {diagnostic('building.slot_occupant', append('"slot="', text('i'), '"/agent="', text('b_Agent', 'Object')), append('"slot="', text('i'), '"/agent="', text('a_Agent', 'Object')))})))
           (if (or ({enum_not_equal} a_educationRequirement b_educationRequirement)
-            (or (!= a_bIsRequiredToRun b_bIsRequiredToRun) (!= a_bGivesBonus b_bGivesBonus))) (return false)))
+            (or (!= a_bIsRequiredToRun b_bIsRequiredToRun) (!= a_bGivesBonus b_bGivesBonus))) {diagnostic('building.slot_role', role_summary('b'), role_summary('a'))}))
         (return true))
-      (:"Is Not Valid" (return false))))"""
+      (:"Is Not Valid" {diagnostic('building.invalid', '"valid"', '"invalid"')})))"""
 code["BuildingUnchanged"] = """(fn BuildingUnchanged (Index)
     (bind unchanged (CallFunction|BuildingMatchesExpected :Index Index :ChangedSlot -1))
     (return unchanged))"""
 code["WorkerIdentityUnchanged"] = f"""(fn WorkerIdentityUnchanged (Index)
-    (if (not (Utilities|Array|IsValidIndex {g('Workers')} Index)) (return false))
+    (if (not (Utilities|Array|IsValidIndex {g('Workers')} Index)) {diagnostic('worker.index', text(f'(Utilities|Array|Length {g("Workers")})'), text('Index'))})
     (bind worker {item('Workers')})
-    (if (not (CallFunction|WorkerUsable :Worker worker)) (return false))
-    (if {contains('ProtectedWorkers', 'worker')} (return false))
+    (if (not (CallFunction|WorkerUsable :Worker worker)) {diagnostic('worker.usable', '"usable"', '"invalid_or_unusable"')})
+    (if {contains('ProtectedWorkers', 'worker')} {diagnostic('worker.protected', '"movable"', '"protected"')})
     {unpack('AgentCharacteristics', '(Class|PrototypeAgent|GetMCharacteristics :self worker)', 'live')}
     {unpack('AgentCharacteristics', item('Characteristics'), 'old')}
     (if (or (!= live_ID old_ID) (or (!= live_guild old_guild) (or ({enum_not_equal} live_education old_education)
-        (!= live_base_productivity old_base_productivity)))) (return false))
-    (if (!= (Utilities|Set|Length live_traits) (Utilities|Set|Length old_traits)) (return false))
+        (!= live_base_productivity old_base_productivity)))) {diagnostic('worker.characteristics', pair_summary('old'), pair_summary('live'))})
+    (if (!= (Utilities|Set|Length live_traits) (Utilities|Set|Length old_traits)) {diagnostic('worker.trait_count', text('(Utilities|Set|Length old_traits)'), text('(Utilities|Set|Length live_traits)'))})
     (bind traits (Utilities|Set|ToArray live_traits))
     (for trait traits
-      (if (not (Utilities|Set|ContainsItem old_traits trait)) (return false)))
+      (if (not (Utilities|Set|ContainsItem old_traits trait)) {diagnostic('worker.trait_membership', '"not_present"', text('trait', 'Name'))}))
     (return true))"""
 code["WorkerUnchanged"] = f"""(fn WorkerUnchanged (Index ReportedWorkplace)
     (bind identityOK (CallFunction|WorkerIdentityUnchanged :Index Index))
     (if (not identityOK) (return false))
     (bind worker {item('Workers')})
-    (if (!= ReportedWorkplace {item('WorkerWorkplaces')}) (return false))
-    {unpack('AgentState', '(Class|PrototypeAgent|GetMState :self worker)', 'ls')}
-    {unpack('AgentState', item('States'), 'os')}
-    (return (and (== ls_derived_productivity os_derived_productivity) (== ls_derived_speedPercent os_derived_speedPercent))))"""
+    (if (!= ReportedWorkplace {item('WorkerWorkplaces')}) {diagnostic('worker.workplace', text(item('WorkerWorkplaces'), 'Object'), text('ReportedWorkplace', 'Object'))})
+    ; Soft quality is frozen by the scorer; identity/availability and placement remain live.
+    (return true))"""
 code["ConfirmAction"] = f"""(fn ConfirmAction (BuildingIndex SlotIndex WorkerIndex Fire ReportedWorkplace)
     (if (not (and {g('SnapshotValid')} {g('CaptureDone')})) (return false))
     (if (not (Utilities|Array|IsValidIndex {g('Buildings')} BuildingIndex)) (return false))
@@ -296,6 +378,14 @@ code["ConfirmAction"] = f"""(fn ConfirmAction (BuildingIndex SlotIndex WorkerInd
     (Utilities|Array|SetArrayElem :TargetArray {g('WorkerWorkplaces')} :Index WorkerIndex :Item ReportedWorkplace)
     (Utilities|Array|SetArrayElem :TargetArray {g('States')} :Index WorkerIndex :Item (Class|PrototypeAgent|GetMState :self worker))
     (return true))"""
+# Confirmation may return false while native state propagates; it is not a terminal validator.
+code["ConfirmActionProbe"] = code["ConfirmAction"].replace("(fn ConfirmAction ", "(fn ConfirmActionProbe ", 1)
+code["ConfirmAction"] = f'''(fn ConfirmAction (BuildingIndex SlotIndex WorkerIndex Fire ReportedWorkplace)
+    {set_v('ValidationProbeDepth', f'(+ {g("ValidationProbeDepth")} 1)')}
+    (bind confirmed (CallFunction|ConfirmActionProbe :BuildingIndex BuildingIndex :SlotIndex SlotIndex
+      :WorkerIndex WorkerIndex :Fire Fire :ReportedWorkplace ReportedWorkplace))
+    {set_v('ValidationProbeDepth', f'(- {g("ValidationProbeDepth")} 1)')}
+    (return confirmed))'''
 code["BeginCapture"] = f"""(fn BeginCapture (WorldContext)
     (CallFunction|ResetSnapshot)
     (Utilities|IsValid WorldContext
@@ -321,8 +411,14 @@ code["CaptureWorkerActor"] = f"""(fn CaptureWorkerActor (Candidate)
           (:CastFailed (return false))))
       (:"Is Not Valid" (return false))))"""
 code["AdvanceCapture"] = f"""(fn AdvanceCapture ()
+    {set_v('LastProtectionWork', '0')}
     (if {g('CaptureDone')} (return))
-    (if (not {g('SnapshotValid')}) {set_v('CaptureDone', 'true')} (return))
+    (if (not {g('SnapshotValid')})
+      {set_v('CaptureDone', 'true')} {set_v('ProtectionActive', 'false')} {set_v('ProtectionHaveSlots', 'false')}
+      (Utilities|Array|Clear {g('ProtectionComponents')}) (Utilities|Array|Clear {g('ProtectionSlots')})
+      (Utilities|Array|Clear {g('BuildingQueue')}) (Utilities|Array|Clear {g('WorkerQueue')})
+      (Variables|Default|SetProtectionBuilding) (return))
+    (if {g('ProtectionActive')} (CallFunction|AdvanceProtection) (return))
     (if (== {g('CaptureStage')} 0)
       (if (>= {g('CaptureIndex')} (Utilities|Array|Length {g('BuildingQueue')}))
         (CallFunction|FinishBuildings)

@@ -18,6 +18,14 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $csv)) { throw "Pak lis
 $entries = @(Get-Content -LiteralPath $csv | Select-Object -Skip 1 | ConvertFrom-Csv -Header Filename,Offset,Size,Hash,Deleted,Compressed,CompressionMethod)
 $expected = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'Content\Mods\WorkerOptimizer') -Filter '*.uasset' |
     Where-Object { $_.BaseName -ne 'PAL_WorkerOptimizer' } | Select-Object -ExpandProperty BaseName)
+foreach ($required in @('BP_UIListItem', 'WBP_PrioritiesView', 'WBP_HistoryRow', 'WBP_HistoryDetailRow',
+    'M_WorkerOptimizerBusy', 'WBP_PriorityRow', 'WBP_SettingsPanel', 'WBP_LogbookView',
+    'T_WorkerOptimizerFrame', 'T_WorkerOptimizerShadow',
+    'T_WorkerOptimizerStatusCompleted', 'T_WorkerOptimizerStatusProblems',
+    'T_WorkerOptimizerStatusError', 'T_WorkerOptimizerStatusAborted',
+    'T_WorkerOptimizerPriorityOwn', 'T_WorkerOptimizerPriorityInherited')) {
+    if ($required -cnotin $expected) { throw "Required UI source asset missing: $required" }
+}
 Assert-WorkerOptimizerEntries -Entries $entries -ExpectedAssets $expected
 & $unrealPak $pak -Verify -unattended *> $integrityLog
 if ($LASTEXITCODE -ne 0) { throw "Pak integrity check failed: $integrityLog" }

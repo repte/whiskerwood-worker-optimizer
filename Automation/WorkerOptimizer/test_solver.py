@@ -1,6 +1,7 @@
 """Execute the shipped Blueprint solver, not a Python copy of the algorithm."""
 
 import itertools
+import math
 import random
 import time
 
@@ -17,14 +18,19 @@ def solve(matrix, columns=None, max_steps=None, allowed_empty=None):
     if allowed_empty is not None:
         solver.call_method("RestrictDummies", args=(allowed_empty,))
     advances = 0
-    for _ in range(rows * (rows + 1) + (rows * cols // 512) + 2):
+    width = rows + cols
+    limit = solver.get_editor_property("StepWorkLimit")
+    primitive_bound = rows * cols + rows * (rows + 1) * (3 * width + 10) + cols + 3 * rows + 20
+    for _ in range(math.ceil(primitive_bound / limit) + 1):
         if solver.get_editor_property("Done"):
             break
         solver.call_method("Advance")
+        assert 0 < solver.get_editor_property("LastStepWork") <= limit
         advances += 1
-    assert solver.get_editor_property("Done"), "Solver failed to finish within bounded augmentation steps"
+    assert solver.get_editor_property("Done"), "Solver failed to finish within bounded primitive steps"
     assert solver.get_editor_property("Succeeded"), "Solver rejected valid matrix"
-    assert max_steps is None or advances <= max_steps, f"Equal-score matching wasted augmentations: {advances} > {max_steps}"
+    tie_bound = math.ceil((rows * cols + rows + (max_steps or 0) * (3 * width + 10) + cols + rows + 20) / limit)
+    assert max_steps is None or advances <= tie_bound, f"Equal-score matching wasted width scans: {advances} > {tie_bound}"
     result = list(solver.get_editor_property("Assignment"))
     assert len(result) == rows
     chosen = [col for col in result if col >= 0]
@@ -80,7 +86,10 @@ def run():
             f"done={invalid.get_editor_property('Done')}; success={invalid.get_editor_property('Succeeded')}"
         )
     invalid.call_method("Initialize", args=([4.0, 9.0], 1, 2))
-    invalid.call_method("Advance")
+    for _ in range(10):
+        if invalid.get_editor_property("Done"):
+            break
+        invalid.call_method("Advance")
     assert list(invalid.get_editor_property("Assignment")) == [1], "Reinitialization retained old state"
     invalid.call_method("Advance")
     assert list(invalid.get_editor_property("Assignment")) == [1], "Completed step changed result"

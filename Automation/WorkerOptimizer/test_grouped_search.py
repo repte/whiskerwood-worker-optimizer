@@ -64,16 +64,22 @@ def run():
         return (3 if teacher < 2 else 1) * (2 if pupil == 2 else 1)
 
     def finish(workers, schools, strict):
+        put(search, "StepWorkLimit", 1 if len(workers) <= 6 else 64)
         assert search.call_method("BeginSearch", args=(layout, matrix, planner, scorer, settings, settings))
         assert not search.call_method("CoverageBelowBest"), "No bound before an incumbent exists"
         start = time.perf_counter()
         ordinary_observations = 0
+        advances = 0
+        states = set()
         saw_upper_gain = saw_upper_tie = False
         for _ in range(1000000):
             if search.get_editor_property("SearchDone"):
                 break
+            states.add(search.get_editor_property("State"))
             if search.get_editor_property("State") == 2 and matrix.get_editor_property("MatrixActive"):
-                if matrix.get_editor_property("Stage") == 0:
+                if matrix.get_editor_property("SetupActive"):
+                    matrix.call_method("AdvanceMatrix")
+                elif matrix.get_editor_property("Stage") == 0:
                     if matrix.get_editor_property("BuildingIndex") == 0 and search.get_editor_property("HasBest"):
                         priorities = list(search.get_editor_property("Priorities"))
                         order = sorted(range(len(priorities)), key=lambda b: (-priorities[b], b))
@@ -94,13 +100,16 @@ def run():
                         value = production(column)
                     assert matrix.call_method("RecordScore", args=(True, float(value)))
                 else:
-                    if matrix.get_editor_property("EdgeIndex") == 0:
+                    if matrix.get_editor_property("EdgeIndex") == 0 and not matrix.get_editor_property("PolicyImported"):
                         assert matrix.call_method("UsePolicy", args=([4] * schools + [0], strict))[-1]
                     matrix.call_method("PrepareEdge")
             else:
                 search.call_method("AdvanceSearch")
+                advances += 1
+                assert 0 <= search.get_editor_property("LastStepWork") <= search.get_editor_property("StepWorkLimit")
         assert search.get_editor_property("SearchDone"), "Grouped search did not terminate"
         assert search.get_editor_property("SearchSucceeded"), search.get_editor_property("FailureCode")
+        assert {0, 1, 2, 3, 5, 6, 7, 9, 10, 13}.issubset(states), states
         assert ordinary_observations == len(snapshot.get_editor_property("Workers")), "Only the first successful candidate may call ordinary native scoring"
         result = list(search.get_editor_property("BestAssignment"))
         assert len(set(result)) == len(result) and -1 not in result, result
@@ -108,7 +117,13 @@ def run():
         if len(workers) == 40:
             assert saw_upper_gain and saw_upper_tie, "Exercise both potentially improving and equal-coverage branches"
         elapsed = time.perf_counter() - start
-        unreal.log(f"WO_GROUPED_SEARCH_TIMING workers={len(workers)} schools={schools} strict={strict} candidates={search.get_editor_property('CandidatesEvaluated')} seconds={elapsed:.3f}; editor observation fixture")
+        rows = len(layout.get_editor_property("RowBuildings"))
+        columns = len(layout.get_editor_property("ColumnActors"))
+        protected = sum(w >= 0 for w in layout.get_editor_property("FixedSlots"))
+        payload = 8 * sum(len(obj.get_editor_property(name)) for obj, name in (
+            (matrix, "Scores"), (matrix, "CachedScores"), (search, "CachedScores"),
+            (planner, "BaseScores"), (planner, "PassScores"), (planner, "Scores")))
+        unreal.log(f"WO_GROUPED_SEARCH_TIMING rows={rows} workers={len(workers)} columns={columns} buildings={len(buildings)} schools={schools} protected_slots={protected} reserve=0 strict={strict} limit={search.get_editor_property('StepWorkLimit')} candidates={search.get_editor_property('CandidatesEvaluated')} search_calls={advances} finite_driver_bound=1000000 host_seconds={elapsed:.3f} selected_float_array_payload_bytes={payload}; editor observation fixture, not shipping frame data; payload excludes allocator/capacity/VM overhead")
         return result
 
     def key(assignment, schools, strict):
@@ -148,7 +163,10 @@ def run():
         wf2 = components[1].get_editor_property("m_workers")
         put(wf2, "bDisabled", True)
         put(components[1], "m_workers", wf2)
-        search.call_method("AdvanceSearch")
+        for _ in range(2000):
+            if search.get_editor_property("SearchDone"):
+                break
+            search.call_method("AdvanceSearch")
         put(wf2, "bDisabled", False)
         put(components[1], "m_workers", wf2)
         assert search.get_editor_property("SearchDone") and not search.get_editor_property("SearchSucceeded")
@@ -160,7 +178,12 @@ def run():
         assert key(result, 4, True) == (1100, 139), result
         assert search.get_editor_property("CandidatesEvaluated") <= 20, "Prune teacherless choices once their optimistic coverage loses"
         assert list(search.get_editor_property("Teachers")) == [-1] * 5
-        assert search.call_method("CoverageBelowBest"), "The final teacherless branch cannot beat full coverage"
+        below = False
+        for _ in range(5 * (len(buildings) + 1) + 1):
+            below = search.call_method("CoverageBelowBest")
+            if search.get_editor_property("CoverageReady"):
+                break
+        assert search.get_editor_property("CoverageReady") and below, "The final teacherless branch cannot beat full coverage"
         unreal.log("WO_GROUPED_SEARCH_TESTS_PASS: 720-permutation optimum in both modes, profile reuse with distinct workers, production opportunity costs, protected-pupil exact fallback and 40-worker/four-school candidate bound")
     finally:
         for obj in reversed(spawned):

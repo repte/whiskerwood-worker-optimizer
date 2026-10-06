@@ -18,6 +18,9 @@ $setupText = Get-Content -LiteralPath $setupLog -Raw
 if ($setupText -notmatch 'WO_PACKAGE_SETUP_TESTS_PASS' -or $setupText -match 'LogPython: Error:|LogEditorPythonExecuter: Error:') {
     throw "Package setup not verified: $setupLog"
 }
+foreach ($marker in @('WO_UI_MATERIALS_READY', 'WO_UI_MATERIALS_TESTS_PASS')) {
+    if ($setupText -notmatch $marker) { throw "Missing $marker in package setup: $setupLog" }
+}
 $setup = Get-Content -LiteralPath (Join-Path $projectRoot 'Saved\WorkerOptimizer-PackageSetup.json') -Raw | ConvertFrom-Json
 if ($setup.mod -cne 'WorkerOptimizer' -or $setup.chunk -lt 1 -or $setup.chunk -gt 300) { throw 'Invalid chunk metadata' }
 & (Join-Path $PSScriptRoot 'Test-Mod.ps1') -EngineRoot $EngineRoot

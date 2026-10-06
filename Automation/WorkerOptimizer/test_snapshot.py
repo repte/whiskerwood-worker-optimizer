@@ -1,6 +1,8 @@
 """Execute the production read-only snapshot against transient game actors."""
 
 import unreal
+import time
+from editor_toolset.toolsets.blueprint import BlueprintTools as BP
 
 
 def put(obj, name, value):
@@ -10,6 +12,7 @@ def put(obj, name, value):
 def run():
     cls = unreal.load_class(None, "/Game/Mods/WorkerOptimizer/BP_WorkforceSnapshot.BP_WorkforceSnapshot_C")
     assert cls is not None, "Production workforce snapshot does not exist"
+    assert "AdvanceProtection" in {str(g.get_name()) for g in BP.list_graphs(unreal.load_asset("/Game/Mods/WorkerOptimizer/BP_WorkforceSnapshot"))}, "Native capture still protects all component slots synchronously"
     snapshot = unreal.new_object(cls)
     subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     spawned = []
@@ -64,6 +67,10 @@ def run():
         snapshot.call_method("FinishBuildings")
         assert not snapshot.call_method("AddBuilding", args=(unknown,)), "Buildings admitted after phase transition"
         assert snapshot.call_method("AddWorker", args=(available, active))
+        soft_state = free_worker.get_editor_property("m_state")
+        put(soft_state, "derived_productivity", 93.)
+        put(soft_state, "derived_speedPercent", 88.)
+        put(free_worker, "m_state", soft_state)
         assert snapshot.call_method("AddWorker", args=(free_worker, None))
         assert not snapshot.call_method("AddWorker", args=(free_worker, None)), "Duplicate worker admitted"
         for person, reported in ((paused_worker, paused), (foreign_worker, foreign), (unknown_worker, unknown)):
@@ -84,6 +91,11 @@ def run():
         assert snapshot.call_method("WorkerUnchanged", args=(0, active))
         assert not snapshot.call_method("WorkerUnchanged", args=(0, paused))
         assert snapshot.call_method("WorkerUnchanged", args=(1, None))
+        put(soft_state, "derived_productivity", 103.)
+        put(soft_state, "derived_speedPercent", 103.)
+        put(free_worker, "m_state", soft_state)
+        assert snapshot.call_method("WorkerUnchanged", args=(1, None)), "Normal soft quality progression must not invalidate hard placement snapshot"
+        assert snapshot.get_editor_property("States")[1].get_editor_property("derived_speedPercent") == 88., "Soft progression must not rewrite captured quality/state"
         assert not snapshot.call_method("WorkerUnchanged", args=(-1, None))
         assert not snapshot.call_method("WorkerUnchanged", args=(2, None))
         original_workforce = active_component.get_editor_property("m_workers").export_text()
@@ -125,12 +137,51 @@ def run():
         assert prefab.import_text(original_prefab)
         put(active, "PrefabInfo", prefab)
         world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+        large_paused, large_component = workplace(60, paused=True)
+        large_workforce = large_component.get_editor_property("m_workers")
+        assert large_workforce.import_text("(m_workerSlots=(" + ",".join("()" for _ in range(257)) + "),bDisabled=True)")
+        large_slots = list(large_workforce.get_editor_property("m_workerSlots"))
+        for slot in large_slots:
+            put(slot, "Agent", paused_worker)
+        put(large_workforce, "m_workerSlots", large_slots)
+        put(large_component, "m_workers", large_workforce)
         snapshot.call_method("BeginCapture", args=(world,))
+        for _ in range(1000):
+            snapshot.call_method("AdvanceCapture")
+            if snapshot.get_editor_property("ProtectionActive"):
+                break
+        assert snapshot.get_editor_property("ProtectionActive")
+        snapshot.call_method("FinishBuildings")
+        assert not snapshot.get_editor_property("WorkerPhase"), "A partial capture cannot expose worker admission"
+        snapshot.call_method("ResetSnapshot")
+        assert not snapshot.get_editor_property("ProtectionActive")
+        assert not snapshot.get_editor_property("ProtectionComponents") and not snapshot.get_editor_property("ProtectionSlots")
+        discovery_start = time.perf_counter()
+        snapshot.call_method("BeginCapture", args=(world,))
+        discovery_ms = (time.perf_counter() - discovery_start) * 1000
+        capture_buildings = len(snapshot.get_editor_property("BuildingQueue"))
+        capture_workers = len(snapshot.get_editor_property("WorkerQueue"))
+        protection_steps = 0
+        capture_calls, capture_sum_ms, capture_max_ms = 0, 0., 0.
         for _ in range(1000):
             if snapshot.get_editor_property("CaptureDone"):
                 break
+            step_start = time.perf_counter()
             snapshot.call_method("AdvanceCapture")
+            elapsed_ms = (time.perf_counter() - step_start) * 1000
+            capture_calls += 1
+            capture_sum_ms += elapsed_ms
+            capture_max_ms = max(capture_max_ms, elapsed_ms)
+            assert snapshot.get_editor_property("LastProtectionWork") <= 1
+            protection_steps += snapshot.get_editor_property("LastProtectionWork")
+            if snapshot.get_editor_property("ProtectionActive"):
+                assert not snapshot.get_editor_property("WorkerPhase"), "Protection must drain before worker capture"
         assert snapshot.get_editor_property("CaptureDone"), "Capture did not terminate"
+        assert protection_steps > 0, "Paused and unsupported fixture protection was not exercised"
+        assert protection_steps >= 257
+        unreal.log(f"WO_CAPTURE_HOST_TIMING: buildings={capture_buildings} workers={capture_workers} BeginCapture={discovery_ms:.3f}ms "
+                   f"advance_calls={capture_calls} finite_bound=1000 advance_sum={capture_sum_ms:.3f}ms advance_max={capture_max_ms:.3f}ms "
+                   "native commandlet world, Python/native dispatch included; 257-slot paused fixture with repeated occupant; no shipping frame-time claim")
         assert snapshot.get_editor_property("SnapshotValid")
         assert active in snapshot.get_editor_property("Buildings")
         assert paused not in snapshot.get_editor_property("Buildings")

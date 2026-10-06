@@ -1,6 +1,7 @@
 """Verify the native mod's chunk/descriptor setup before cooking."""
 
 import json
+import runpy
 from pathlib import Path
 
 import unreal
@@ -20,6 +21,8 @@ assert label.get_editor_property("label_assets_in_my_directory")
 assert not label.get_editor_property("is_runtime_label")
 
 registry = unreal.AssetRegistryHelpers.get_asset_registry()
+registry.scan_paths_synchronous([BASE], force_rescan=True)
+registry.wait_for_completion()
 labels = registry.get_assets_by_class(unreal.TopLevelAssetPath("/Script/Engine", "PrimaryAssetLabel"))
 for data in labels:
     other = data.get_asset()
@@ -31,19 +34,28 @@ assert descriptor["Name"] == "WorkerOptimizer"
 assert descriptor["EngineVersion"] == "5.8"
 assert descriptor["Version"] and descriptor["Description"] and descriptor["CreatedBy"]
 assert not descriptor.get("Modules"), "Native mod must not require a DLL"
-for name in ("BP_Startup", "BP_MapLoad", "BP_WorkerOptimizer", "WBP_WorkerOptimizer"):
+for name in ("BP_Startup", "BP_MapLoad", "BP_WorkerOptimizer", "WBP_WorkerOptimizer",
+             "BP_UIListItem", "WBP_PrioritiesView", "WBP_HistoryRow", "WBP_HistoryDetailRow", "M_WorkerOptimizerBusy",
+             "WBP_PriorityRow", "WBP_SettingsPanel", "WBP_LogbookView",
+             "T_WorkerOptimizerFrame", "T_WorkerOptimizerShadow",
+             "T_WorkerOptimizerStatusCompleted", "T_WorkerOptimizerStatusProblems",
+             "T_WorkerOptimizerStatusError", "T_WorkerOptimizerStatusAborted",
+             "T_WorkerOptimizerPriorityOwn", "T_WorkerOptimizerPriorityInherited"):
     assert unreal.EditorAssetLibrary.does_asset_exist(BASE + "/" + name), name
+runpy.run_path(str(Path(__file__).with_name("generate_ui_frame.py")), run_name="worker_optimizer_frame_preflight")["validate_assets"]()
 
 options = unreal.AssetRegistryDependencyOptions(
     include_soft_package_references=True, include_hard_package_references=True,
     include_searchable_names=False, include_soft_management_references=False,
     include_hard_management_references=False,
 )
+assert registry.get_dependencies(BASE + "/__MissingDependencyBoundary", options) is None, "Failed lookups must remain distinguishable from empty dependency lists"
 for data in registry.get_assets_by_path(BASE, recursive=True, include_only_on_disk_assets=True):
-    dependencies = registry.get_dependencies(data.package_name, options) or []
+    dependencies = registry.get_dependencies(data.package_name, options)
     if str(data.package_name) != LABEL:
-        assert dependencies, ("No dependency information", str(data.package_name))
-    for dependency in dependencies:
+        # UE omits ubiquitous native script packages; native-only assets may have no edges.
+        assert dependencies is not None, ("No dependency information", str(data.package_name))
+    for dependency in dependencies or []:
         path = str(dependency)
         # Standard Blueprint macros are expanded at compile time, not runtime helpers.
         if path == "/Engine/EditorBlueprintResources/StandardMacros":

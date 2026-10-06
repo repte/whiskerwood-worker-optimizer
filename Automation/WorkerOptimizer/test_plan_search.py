@@ -53,7 +53,9 @@ def run():
     def native_observations(strict):
         # Native definitions, saved options and productivity functions are editor
         # stubs. Only these boundaries are supplied; actual search and planning run.
-        if matrix.get_editor_property("Stage") == 0:
+        if matrix.get_editor_property("SetupActive"):
+            matrix.call_method("AdvanceMatrix")
+        elif matrix.get_editor_property("Stage") == 0:
             if matrix.get_editor_property("BuildingIndex") == 0 and search.get_editor_property("CandidatesEvaluated") > 0:
                 assert matrix.get_editor_property("PolicyImported"), "Subsequent candidates must use the captured policy"
                 assert list(matrix.get_editor_property("PolicyValues")) == list(search.get_editor_property("Priorities"))
@@ -67,7 +69,7 @@ def run():
                 value = 10000.0 if column == 1 else 1000.0 if column == 0 else 10.0
             assert matrix.call_method("RecordScore", args=(True, value))
         else:
-            if matrix.get_editor_property("EdgeIndex") == 0:
+            if matrix.get_editor_property("EdgeIndex") == 0 and not matrix.get_editor_property("PolicyImported"):
                 priorities = [4, 4, 0] if len(snapshot.get_editor_property("Buildings")) == 3 else [2] * len(snapshot.get_editor_property("Buildings"))
                 assert matrix.call_method("UsePolicy", args=(priorities, strict))[-1]
             matrix.call_method("PrepareEdge")
@@ -167,14 +169,20 @@ def run():
         assert search.get_editor_property("SearchDone") and not search.get_editor_property("SearchSucceeded")
         assert str(search.get_editor_property("FailureCode")) == "definition_unavailable"
         assert begin()
+        changed_policy = False
         for _ in range(10000):
             if search.get_editor_property("SearchDone"):
                 break
             if search.get_editor_property("State") == 2 and matrix.get_editor_property("MatrixActive"):
+                if (not changed_policy and search.get_editor_property("CandidatesEvaluated") > 0
+                        and not matrix.get_editor_property("SetupActive") and matrix.get_editor_property("Stage") == 1
+                        and matrix.get_editor_property("EdgeIndex") == 0 and not matrix.get_editor_property("AwaitingScore")):
+                    assert matrix.call_method("UsePolicy", args=(list(search.get_editor_property("Priorities")), False))[-1]
+                    changed_policy = True
                 native_observations(search.get_editor_property("CandidatesEvaluated") == 0)
             else:
                 search.call_method("AdvanceSearch")
-        assert search.get_editor_property("SearchDone") and not search.get_editor_property("SearchSucceeded")
+        assert changed_policy and search.get_editor_property("SearchDone") and not search.get_editor_property("SearchSucceeded")
         assert str(search.get_editor_property("FailureCode")) == "settings_changed"
         assert not list(search.get_editor_property("BestAssignment"))
         capture([buildings[2]], workers)

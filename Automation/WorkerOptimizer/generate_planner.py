@@ -15,12 +15,12 @@ if bp is None:
     bp = BP.create(ROOT, "BP_StaffingPlanner", parent)
 
 types = {
-    "bool": "PlanDone PlanSucceeded StrictMode FixedConfigured ReserveConfigured",
-    "int": "State SlotCount WorkerCount BuildingCount CurrentBuilding CurrentSlot RootSlot QueueHead SearchRow FoundWorker AugmentRow PreviousWorker BestPriority Tier BuildIndex BuildEnd ScanRow ScanWorker ScanPriority PlanValidationIndex PlanValidationEnd TierCount RealSlotCount ReserveCount",
+    "bool": "PlanDone PlanSucceeded StrictMode FixedConfigured ReserveConfigured FlexibleConfigured",
+    "int": "State SlotCount WorkerCount BuildingCount CurrentBuilding CurrentSlot RootSlot QueueHead SearchRow FoundWorker AugmentRow PreviousWorker BestPriority Tier BuildIndex BuildEnd ScanRow ScanWorker ScanPriority PlanValidationIndex PlanValidationEnd TierCount RealSlotCount ReserveCount PolicyCursor ReserveMovable ReserveRow DispatchState PolicyWork SolveColumns DummyRemaining UnionRow",
     "float": "MaxScore FillBonus CoverageBonus ColumnBonus EdgeScore ReducedCost TierScore BuilderTotal",
-    "float[]": "BaseScores PassScores ExpectedScores",
-    "int[]": "SlotBuildings Priorities PlanAssignment CoverageSlotMatch CoverageWorkerMatch SavedSlotMatch SavedWorkerMatch ParentRow Queue MinimumCount SlotCountByBuilding ExpectedCounts FixedSlots FixedOwners",
-    "bool[]": "Minimum Accepted Processed Visited ReservedWorker AllowedEdges AllowedEmpty RequiredWorker",
+    "float[]": "BaseScores PassScores ExpectedScores ReserveQuality ExpandedScores",
+    "int[]": "SlotBuildings Priorities PlanAssignment CoverageSlotMatch CoverageWorkerMatch SavedSlotMatch SavedWorkerMatch ParentRow Queue MinimumCount SlotCountByBuilding ExpectedCounts FixedSlots FixedOwners PendingFixed DummyBuildings OpenCount OptionalOpenCount BuildingFirstRow BuildingLastRow NextBuildingRow",
+    "bool[]": "Minimum Accepted Processed Visited ReservedWorker AllowedEdges AllowedEmpty RequiredWorker FlexibleMinimum BuildingHasFixed BuildingFilled",
 }
 existing = set(BP.list_variables(bp))
 for kind, names in types.items():
@@ -30,7 +30,7 @@ for kind, names in types.items():
 
 graphs = {}
 existing_graphs = {str(g.get_name()) for g in BP.list_graphs(bp)}
-functions = ("FailPlan", "StartPlan", "RequireFixedSlots", "KeepUnassigned", "ValidateBlock", "SelectBuilding", "BeginCoverage", "CoverageStep", "BeginPass", "BuildPass", "SolvePass", "RefinePass", "AdvancePlan")
+functions = ("FailPlan", "StartPlan", "RequireFixedSlots", "RequireFlexibleMinimum", "KeepUnassigned", "ValidateBlock", "SelectBuilding", "BeginCoverage", "CoverageStep", "BeginPass", "BuildPass", "SolvePass", "RefinePass", "PolicyStep", "AdvancePlan")
 for name in functions:
     graphs[name] = BP.get_graph(bp, name) if name in existing_graphs else BP.add_function_graph(bp, name)
 if "StartPlan" not in existing_graphs:
@@ -48,6 +48,9 @@ if "KeepUnassigned" not in existing_graphs:
     BP.add_function_param(graphs["KeepUnassigned"], "Movable", "int", True)
     BP.add_function_param(graphs["KeepUnassigned"], "Quality", "float", True, ContainerType.ARRAY)
     BP.add_function_param(graphs["KeepUnassigned"], "Result", "bool", False)
+if "RequireFlexibleMinimum" not in existing_graphs:
+    BP.add_function_param(graphs["RequireFlexibleMinimum"], "InputFlexible", "bool", True, ContainerType.ARRAY)
+    BP.add_function_param(graphs["RequireFlexibleMinimum"], "Result", "bool", False)
 BP.compile_blueprint(bp)
 context = graphs["AdvancePlan"]
 all_types = BP.find_node_types(context, "", [])
@@ -98,6 +101,7 @@ code["StartPlan"] = f"""
 (fn StartPlan (InputScores InputBuildings InputMinimum InputPriorities InputWorkers InputStrict)
   {call('FailPlan')}
   {s('FixedConfigured', 'false')}
+  {s('FlexibleConfigured', 'false')}
   {s('ReserveConfigured', 'false')} {s('ReserveCount', '0')}
   {s('BuilderTotal', '0.0')}
   (Utilities|Array|Clear {g('PlanAssignment')})
@@ -122,281 +126,405 @@ code["StartPlan"] = f"""
   {reset('ExpectedCounts', '5')} {reset('ExpectedScores', '5')}
   {reset('Accepted', g('BuildingCount'))} {reset('Processed', g('BuildingCount'))}
   {reset('MinimumCount', g('BuildingCount'))} {reset('SlotCountByBuilding', g('BuildingCount'))}
+  {reset('FlexibleMinimum', g('BuildingCount'))} {reset('OpenCount', g('BuildingCount'))} {reset('OptionalOpenCount', g('BuildingCount'))}
+  {reset('BuildingHasFixed', g('BuildingCount'))} {reset('BuildingFilled', g('BuildingCount'))}
+  {reset('BuildingFirstRow', g('BuildingCount'))} {reset('BuildingLastRow', g('BuildingCount'))} {reset('NextBuildingRow', g('SlotCount'))}
+  (Utilities|Array|Clear {g('DummyBuildings')}) (Utilities|Array|Clear {g('ExpandedScores')})
   {s('PlanDone', 'false')}
-  (for b (range {g('BuildingCount')})
-    (if (or (< {a('Priorities', 'b')} 0) (> {a('Priorities', 'b')} 4)) {call('FailPlan')} (break)))
-  (if {g('PlanDone')} (return))
-  (for r (range {g('SlotCount')})
-    {set_a('PlanAssignment', 'r', '-1')} {set_a('CoverageSlotMatch', 'r', '-1')}
-    {set_a('FixedSlots', 'r', '-1')}
-    {set_a('AllowedEmpty', 'r', 'true')}
-    (bind building {a('SlotBuildings', 'r')})
-    (if (or (< building 0) (>= building {g('BuildingCount')})) {call('FailPlan')} (break))
-    {set_a('SlotCountByBuilding', 'building', f'(+ {a("SlotCountByBuilding", "building")} 1)')}
-    (if {a('Minimum', 'r')} {set_a('MinimumCount', 'building', f'(+ {a("MinimumCount", "building")} 1)')}))
-  (if {g('PlanDone')} (return))
-  (for b (range {g('BuildingCount')})
-    (if (== {a('SlotCountByBuilding', 'b')} 0)
-      {set_a('Processed', 'b', 'true')}
-      (elif (== {a('MinimumCount', 'b')} 0) {call('FailPlan')} (break))))
-  (if {g('PlanDone')} (return))
-  (for w (range InputWorkers) {set_a('CoverageWorkerMatch', 'w', '-1')} {set_a('FixedOwners', 'w', '-1')})
-  {s('MaxScore', '0.0')} {s('PlanValidationIndex', '0')} {s('State', '0')}
-  (if (or (== {g('SlotCount')} 0) (== InputWorkers 0))
-    {s('PlanDone', 'true')} {s('PlanSucceeded', 'true')}))
+  {s('MaxScore', '0.0')} {s('PlanValidationIndex', '0')}
+  {s('PolicyCursor', '0')} {s('LastStepWork', '0')} {s('State', '10')})
 """
+code["RequireFlexibleMinimum"] = f"""(fn RequireFlexibleMinimum (InputFlexible)
+  (if (or {g('PlanDone')} (or {g('FlexibleConfigured')} (or (!= {g('State')} 10) (!= {g('PolicyCursor')} 0)))) (return false))
+  (if (!= (Utilities|Array|Length InputFlexible) {g('BuildingCount')}) {call('FailPlan')} (return false))
+  {s('FlexibleConfigured', 'true')} {s('FlexibleMinimum', 'InputFlexible')} (return true))"""
 
 code["RequireFixedSlots"] = f"""
 (fn RequireFixedSlots (InputFixed)
-  (if (or {g('PlanDone')} (or {g('FixedConfigured')} (or (!= {g('State')} 0) (!= {g('PlanValidationIndex')} 0)))) (return false))
-  {s('FixedConfigured', 'true')}
-  (if (!= (Utilities|Array|Length InputFixed) {g('SlotCount')}) {call('FailPlan')} (return false))
-  (for r (range {g('SlotCount')})
-    (bind worker (Utilities|Array|Get(acopy) :Array InputFixed :"Dimension 1" r))
-    (if (or (< worker -1) (>= worker {g('WorkerCount')})) {call('FailPlan')} (return false))
-    (if (>= worker 0)
-      (if (>= {a('FixedOwners', 'worker')} 0) {call('FailPlan')} (return false))
-      (if (not (>= {a('BaseScores', f'(+ (* r {g("WorkerCount")}) worker)')} 0.0)) {call('FailPlan')} (return false))
-      {set_a('FixedOwners', 'worker', 'r')}
-      {set_a('CoverageWorkerMatch', 'worker', 'r')}
-      {set_a('CoverageSlotMatch', 'r', 'worker')}
-      {set_a('AllowedEmpty', 'r', 'false')}
-      {set_a('RequiredWorker', 'worker', 'true')}))
-  {s('FixedSlots', 'InputFixed')}
-  (return true))
+  (if (or {g('PlanDone')} (or {g('FixedConfigured')} (or (!= {g('State')} 10) (!= {g('PolicyCursor')} 0)))) (return false))
+  (if (!= (Utilities|Array|Length InputFixed) {g('RealSlotCount')}) {call('FailPlan')} (return false))
+  {s('FixedConfigured', 'true')} {s('PendingFixed', 'InputFixed')} (return true))
 """
 
 code["KeepUnassigned"] = f"""
 (fn KeepUnassigned (Requested Movable Quality)
-  (if (or {g('PlanDone')} (or {g('ReserveConfigured')} (or (!= {g('State')} 0) (!= {g('PlanValidationIndex')} 0)))) (return false))
+  (if (or {g('PlanDone')} (or {g('ReserveConfigured')} (or (!= {g('State')} 10) (!= {g('PolicyCursor')} 0)))) (return false))
   (if (or (< Requested 0) (or (< Movable 0) (> Movable {g('WorkerCount')}))) {call('FailPlan')} (return false))
   (if (!= (Utilities|Array|Length Quality) {g('WorkerCount')}) {call('FailPlan')} (return false))
-  {s('ReserveConfigured', 'true')}
   {s('ReserveCount', '(select (< Requested Movable) Requested Movable)')}
-  (if (== {g('ReserveCount')} 0) (return true))
   (if (> (+ {g('SlotCount')} {g('ReserveCount')}) 10000) {call('FailPlan')} (return false))
-  (for w (range {g('WorkerCount')})
-    (bind quality (Utilities|Array|Get(acopy) :Array Quality :"Dimension 1" w))
-    (if (not (and (>= quality 0.0) (<= quality 1000000.0))) {call('FailPlan')} (return false)))
-  ; Virtual mandatory jobs keep workers free without preselecting their identities.
-  (Utilities|Array|Add {g('Priorities')} -1)
-  (Utilities|Array|Add {g('Accepted')} true) (Utilities|Array|Add {g('Processed')} true)
-  (Utilities|Array|Add {g('MinimumCount')} {g('ReserveCount')})
-  (Utilities|Array|Add {g('SlotCountByBuilding')} {g('ReserveCount')})
-  (for n (range {g('ReserveCount')})
-    (bind row (+ {g('RealSlotCount')} n))
-    (Utilities|Array|Add {g('SlotBuildings')} {g('BuildingCount')})
-    (Utilities|Array|Add {g('Minimum')} true)
-    (Utilities|Array|Add {g('FixedSlots')} -1)
-    (Utilities|Array|Add {g('AllowedEmpty')} false)
-    (Utilities|Array|Add {g('PlanAssignment')} -1)
-    (Utilities|Array|Add {g('CoverageSlotMatch')} -1)
-    {s('FoundWorker', '-1')}
-    (for w (range {g('WorkerCount')})
-      (bind eligible (and (< w Movable) (< {a('FixedOwners', 'w')} 0)))
-      (Utilities|Array|Add {g('BaseScores')} (select eligible (Utilities|Array|Get(acopy) :Array Quality :"Dimension 1" w) -1e20))
-      (Utilities|Array|Add {g('AllowedEdges')} eligible)
-      (if (and eligible (and (< {g('FoundWorker')} 0) (< {a('CoverageWorkerMatch', 'w')} 0))) {s('FoundWorker', 'w')}))
-    (if (< {g('FoundWorker')} 0) {call('FailPlan')} (return false))
-    {set_a('CoverageSlotMatch', 'row', g('FoundWorker'))}
-    {set_a('CoverageWorkerMatch', g('FoundWorker'), 'row')})
-  {s('SlotCount', f'(+ {g("SlotCount")} {g("ReserveCount")})')}
-  {s('BuildingCount', f'(+ {g("BuildingCount")} 1)')}
+  {s('ReserveConfigured', 'true')} {s('ReserveMovable', 'Movable')} {s('ReserveQuality', 'Quality')}
   (return true))
 """
 
 code["ValidateBlock"] = f"""
 (fn ValidateBlock ()
-  (bind count {length('BaseScores')})
-  {s('PlanValidationEnd', f'(select (< (+ {g("PlanValidationIndex")} 512) count) (+ {g("PlanValidationIndex")} 512) count)')}
-  (for n (range {g('PlanValidationIndex')} {g('PlanValidationEnd')})
+  (bind n {g('PlanValidationIndex')})
+  (if (< n {length('BaseScores')})
     (bind value {a('BaseScores', 'n')})
-    (if (not (and (>= value -1e20) (<= value 1e6))) {call('FailPlan')} (break))
+    (if (not (and (>= value -1e20) (<= value 1e6))) {call('FailPlan')} (return))
     {s('ScanRow', f'(/ n {g("WorkerCount")})')} {s('ScanWorker', f'(- n (* {g("ScanRow")} {g("WorkerCount")}))')}
-    (bind fixedWorker {a('FixedSlots', g('ScanRow'))})
-    (bind fixedOwner {a('FixedOwners', g('ScanWorker'))})
+    (bind fixedWorker {a('FixedSlots', g('ScanRow'))}) (bind fixedOwner {a('FixedOwners', g('ScanWorker'))})
     (if (or (and (>= fixedWorker 0) (!= fixedWorker {g('ScanWorker')}))
-            (and (>= fixedOwner 0) (!= fixedOwner {g('ScanRow')})))
-      {set_a('BaseScores', 'n', '-1e20')})
+      (and (>= fixedOwner 0) (!= fixedOwner {g('ScanRow')}))) {set_a('BaseScores', 'n', '-1e20')})
     {set_a('AllowedEdges', 'n', '(>= value 0.0)')}
-    (if (> value {g('MaxScore')}) {s('MaxScore', 'value')}))
-  (if {g('PlanDone')} (return))
-  {s('PlanValidationIndex', g('PlanValidationEnd'))}
-  (if (< {g('PlanValidationIndex')} count) (return))
-  (bind capacity (+ (select (< {g('SlotCount')} {g('WorkerCount')}) {g('SlotCount')} {g('WorkerCount')}) 1))
+    (if (> value {g('MaxScore')}) {s('MaxScore', 'value')})
+    {s('PlanValidationIndex', f'(+ n 1)')} (return))
+  (bind capacity (+ {g('SlotCount')} 1))
   {s('FillBonus', f'(+ (* (+ (* {g("MaxScore")} 5.0) 1.0) capacity) 1.0)')}
   {s('CoverageBonus', f'(+ (* (+ (+ {g("FillBonus")} (* {g("MaxScore")} 5.0)) 1.0) capacity) 1.0)')}
   {s('ColumnBonus', f'(+ (* (+ (+ (+ {g("CoverageBonus")} {g("FillBonus")} ) (* {g("MaxScore")} 5.0)) 1.0) capacity) 1.0)')}
-  {s('State', '1')})
+  {s('PolicyCursor', '0')} {s('CurrentBuilding', '-1')} {s('BestPriority', '-1')} {s('State', '19')})
 """
 
 code["SelectBuilding"] = f"""
 (fn SelectBuilding ()
-  {s('CurrentBuilding', '-1')} {s('BestPriority', '-1')}
-  (for b (range {g('BuildingCount')})
+  (bind b {g('PolicyCursor')})
+  (if (< b {g('BuildingCount')})
     (if (and (not {a('Processed', 'b')}) (> {a('Priorities', 'b')} {g('BestPriority')}))
-      {s('CurrentBuilding', 'b')} {s('BestPriority', a('Priorities', 'b'))}))
-  (if (< {g('CurrentBuilding')} 0)
-    {s('Tier', '4')} {call('BeginPass')} (return))
+      {s('CurrentBuilding', 'b')} {s('BestPriority', a('Priorities', 'b'))})
+    {s('PolicyCursor', '(+ b 1)')} (return))
+  (if (< {g('CurrentBuilding')} 0) {s('Tier', '4')} {s('PolicyCursor', '0')} {s('State', '20')} (return))
   {set_a('Processed', g('CurrentBuilding'), 'true')}
   {s('SavedSlotMatch', g('CoverageSlotMatch'))} {s('SavedWorkerMatch', g('CoverageWorkerMatch'))}
-  {s('CurrentSlot', '0')} {s('State', '2')})
+  {s('CurrentSlot', a('BuildingFirstRow', g('CurrentBuilding')))} {s('State', '2')})
 """
 
 code["BeginCoverage"] = f"""
 (fn BeginCoverage ()
-  {s('RootSlot', '-1')}
-  (for r (range {g('CurrentSlot')} {g('SlotCount')})
-    (if (and (and (== {a('SlotBuildings', 'r')} {g('CurrentBuilding')}) {a('Minimum', 'r')}) (< {a('FixedSlots', 'r')} 0))
-      {s('RootSlot', 'r')} (break)))
-  (if (< {g('RootSlot')} 0)
-    {set_a('Accepted', g('CurrentBuilding'), 'true')} {s('State', '1')} (return))
-  (for w (range {g('WorkerCount')}) {set_a('Visited', 'w', 'false')})
-  (Utilities|Array|Clear {g('Queue')})
-  (Utilities|Array|Add {g('Queue')} {g('RootSlot')})
-  {s('QueueHead', '0')} {s('State', '3')})
+  (bind r {g('CurrentSlot')})
+  (if (< r 0)
+    (if (and (== r -1) (and {a('FlexibleMinimum', g('CurrentBuilding'))} (not {a('BuildingHasFixed', g('CurrentBuilding'))})))
+      {s('RootSlot', f'(+ {g("SlotCount")} {g("CurrentBuilding")})')} {s('ScanWorker', '0')} {s('State', '21')}
+      {s('CurrentSlot', '-2')} (return))
+    {set_a('Accepted', g('CurrentBuilding'), 'true')}
+    {s('PolicyCursor', '0')} {s('CurrentBuilding', '-1')} {s('BestPriority', '-1')} {s('State', '1')} (return))
+  (if (and (and (== {a('SlotBuildings', 'r')} {g('CurrentBuilding')}) {a('Minimum', 'r')}) (< {a('FixedSlots', 'r')} 0))
+    {s('RootSlot', 'r')} {s('ScanWorker', '0')} {s('State', '21')})
+  {s('CurrentSlot', a('NextBuildingRow', 'r'))})
 """
 
-coverage_index = f"(+ (* {g('SearchRow')} {g('WorkerCount')}) w)"
+virtual_building = f"(- {g('SearchRow')} {g('SlotCount')})"
+reset_union = f"(if (>= {g('SearchRow')} {g('SlotCount')}) {s('UnionRow', a('BuildingFirstRow', virtual_building))} (else {s('UnionRow', '0')}))"
 code["CoverageStep"] = f"""
 (fn CoverageStep ()
   (if (>= {g('QueueHead')} {length('Queue')})
     {s('CoverageSlotMatch', g('SavedSlotMatch'))} {s('CoverageWorkerMatch', g('SavedWorkerMatch'))}
-    {s('State', '1')} (return))
+    {s('PolicyCursor', '0')} {s('CurrentBuilding', '-1')} {s('BestPriority', '-1')} {s('State', '1')} (return))
   {s('SearchRow', a('Queue', g('QueueHead')))} {s('QueueHead', f'(+ {g("QueueHead")} 1)')}
-  {s('FoundWorker', '-1')}
-  (for w (range {g('WorkerCount')})
-    (if (and (not {a('Visited', 'w')}) (>= {a('BaseScores', coverage_index)} 0.0))
-      {set_a('Visited', 'w', 'true')} {set_a('ParentRow', 'w', g('SearchRow'))}
-      (if (< {a('CoverageWorkerMatch', 'w')} 0)
-        {s('FoundWorker', 'w')} (break)
-        (else (Utilities|Array|Add {g('Queue')} {a('CoverageWorkerMatch', 'w')})))))
-  (if (>= {g('FoundWorker')} 0)
-    (while (>= {g('FoundWorker')} 0)
-      {s('AugmentRow', a('ParentRow', g('FoundWorker')))}
-      {s('PreviousWorker', a('CoverageSlotMatch', g('AugmentRow')))}
-      {set_a('CoverageSlotMatch', g('AugmentRow'), g('FoundWorker'))}
-      {set_a('CoverageWorkerMatch', g('FoundWorker'), g('AugmentRow'))}
-      {s('FoundWorker', g('PreviousWorker'))})
-    {s('CurrentSlot', f'(+ {g("RootSlot")} 1)')} {s('State', '2')}))
+  {s('FoundWorker', '-1')} {s('ScanWorker', '0')} {reset_union} {s('State', '24')})
 """
 
 code["BeginPass"] = f"""
 (fn BeginPass ()
-  {reset('PassScores', f'(* {g("SlotCount")} {g("WorkerCount")})')}
+  {reset('PassScores', f'(* {g("SlotCount")} {g("SolveColumns")})')}
   {s('BuildIndex', '0')} {s('State', '4')})
 """
 
 code["BuildPass"] = f"""
 (fn BuildPass ()
-  (bind count {length('BaseScores')})
-  {s('BuildEnd', f'(select (< (+ {g("BuildIndex")} 256) count) (+ {g("BuildIndex")} 256) count)')}
-  (for n (range {g('BuildIndex')} {g('BuildEnd')})
-    {s('ScanRow', f'(/ n {g("WorkerCount")})')} {s('ScanWorker', f'(- n (* {g("ScanRow")} {g("WorkerCount")}))')}
+  (bind n {g('BuildIndex')})
+  (if (< n {length('ExpandedScores')})
+    {s('ScanRow', f'(/ n {g("SolveColumns")})')} {s('ScanWorker', f'(- n (* {g("ScanRow")} {g("SolveColumns")}))')}
     (bind building {a('SlotBuildings', g('ScanRow'))})
     {s('ScanPriority', a('Priorities', 'building'))} {s('EdgeScore', '-1e20')}
-    (if (and (or {a('Accepted', 'building')} (>= {a('FixedSlots', g('ScanRow'))} 0)) {a('AllowedEdges', 'n')})
+    (if {a('AllowedEdges', 'n')}
       {s('EdgeScore', '0.0')}
-      (if (and (>= {g('ScanPriority')} 0) (>= {g('Tier')} 0))
-       (if (not {g('StrictMode')})
-        {s('EdgeScore', f'(+ {g("FillBonus")} (* {a("BaseScores", "n")} (+ {g("ScanPriority")} 1)))')}
-        (elif (== {g('ScanPriority')} {g('Tier')})
-          {s('EdgeScore', f'(+ {g("FillBonus")} {a("BaseScores", "n")})')})))
-      (if (and (< {g('ScanPriority')} 0) (< {g('Tier')} 0)) {s('EdgeScore', a('BaseScores', 'n'))})
-      (if {a('Minimum', g('ScanRow'))} {s('EdgeScore', f'(+ {g("EdgeScore")} {g("CoverageBonus")})')})
+      (if (< {g('ScanWorker')} {g('WorkerCount')})
+        (if (and (>= {g('ScanPriority')} 0) (>= {g('Tier')} 0))
+          (if (not {g('StrictMode')}) {s('EdgeScore', f'(+ {g("FillBonus")} (* {a("ExpandedScores", "n")} (+ {g("ScanPriority")} 1)))')}
+            (elif (== {g('ScanPriority')} {g('Tier')}) {s('EdgeScore', f'(+ {g("FillBonus")} {a("ExpandedScores", "n")})')})))
+        (if (and (< {g('ScanPriority')} 0) (< {g('Tier')} 0)) {s('EdgeScore', a('ExpandedScores', 'n'))})
+        (if {a('Minimum', g('ScanRow'))} {s('EdgeScore', f'(+ {g("EdgeScore")} {g("CoverageBonus")})')}))
       (if {a('RequiredWorker', g('ScanWorker'))} {s('EdgeScore', f'(+ {g("EdgeScore")} {g("ColumnBonus")})')}))
-    {set_a('PassScores', 'n', g('EdgeScore'))})
-  {s('BuildIndex', g('BuildEnd'))}
-  (if (< {g('BuildIndex')} count) (return))
-  {call('Initialize', f':IncomingScores {g("PassScores")} :RowCount {g("SlotCount")} :ColumnCount {g("WorkerCount")}')}
-  {call('RestrictDummies', f':Mask {g("AllowedEmpty")}')}
-  {s('State', '5')})
+    {set_a('PassScores', 'n', g('EdgeScore'))} {s('BuildIndex', '(+ n 1)')} (return))
+  {call('Initialize', f':IncomingScores {g("PassScores")} :RowCount {g("SlotCount")} :ColumnCount {g("SolveColumns")}')}
+  {call('RestrictDummies', f':Mask {g("AllowedEmpty")}')} {s('State', '5')})
 """
 
-worker_index = f"(+ (* r {g('WorkerCount')}) worker)"
 code["SolvePass"] = f"""
 (fn SolvePass ()
-  {call('Advance')}
-  (if (not {g('Done')}) (return))
   (if (not {g('Succeeded')}) {call('FailPlan')} (return))
-  {s('TierCount', '0')} {s('TierScore', '0.0')}
-  (for w (range {g('WorkerCount')}) {set_a('ReservedWorker', 'w', 'false')})
-  (for r (range {g('SlotCount')})
-    (bind building {a('SlotBuildings', 'r')})
-    (bind worker {a('Assignment', 'r')})
-    (if (>= worker 0)
-      {set_a('ReservedWorker', 'worker', 'true')}
-      (bind n (+ (* r {g('WorkerCount')}) worker))
-      (if (or (not {a('AllowedEdges', 'n')}) (and (not {a('Accepted', 'building')}) (< {a('FixedSlots', 'r')} 0))) {call('FailPlan')} (break))
-      (if (and (>= {a('FixedSlots', 'r')} 0) (!= worker {a('FixedSlots', 'r')})) {call('FailPlan')} (break))
-      (if (== {a('Priorities', 'building')} {g('Tier')})
-        {s('TierCount', f'(+ {g("TierCount")} 1)')}
-        {s('TierScore', f'(+ {g("TierScore")} {a("BaseScores", "n")})')})
-      (else
-        (if (or (not {a('AllowedEmpty', 'r')}) (and {a('Minimum', 'r')} {a('Accepted', 'building')}))
-          {call('FailPlan')} (break)))))
-  (if {g('PlanDone')} (return))
-  (for w (range {g('WorkerCount')})
-    (if (and {a('RequiredWorker', 'w')} (not {a('ReservedWorker', 'w')})) {call('FailPlan')} (break)))
-  (if {g('PlanDone')} (return))
-  (if (>= {g('Tier')} 0)
-    {set_a('ExpectedCounts', g('Tier'), g('TierCount'))}
-    {set_a('ExpectedScores', g('Tier'), g('TierScore'))})
-  (if (or (< {g('Tier')} 0) (and (== {g('ReserveCount')} 0) (or (not {g('StrictMode')}) (== {g('Tier')} 0))))
-    {s('BuilderTotal', '0.0')}
-    (for r (range {g('RealSlotCount')} {g('SlotCount')})
-      (bind worker {a('Assignment', 'r')})
-      (if (< worker 0) {call('FailPlan')} (return))
-      {s('BuilderTotal', f'(+ {g("BuilderTotal")} {a("BaseScores", worker_index)})')})
-    {s('PlanAssignment', g('Assignment'))}
-    (Utilities|Array|Resize {g('PlanAssignment')} {g('RealSlotCount')})
-    {s('PlanDone', 'true')} {s('PlanSucceeded', 'true')}
-    (if {g('StrictMode')}
-      (for tier (range 5)
-        {s('TierCount', '0')} {s('TierScore', '0.0')}
-        (for r (range {g('RealSlotCount')})
-          (bind building {a('SlotBuildings', 'r')})
-          (bind worker {a('PlanAssignment', 'r')})
-          (if (and (>= worker 0) (== {a('Priorities', 'building')} tier))
-            {s('TierCount', f'(+ {g("TierCount")} 1)')}
-            {s('TierScore', f'(+ {g("TierScore")} {a("BaseScores", worker_index)})')}))
-        (bind difference (- {g('TierScore')} {a('ExpectedScores', 'tier')}))
-        (if (or (!= {g('TierCount')} {a('ExpectedCounts', 'tier')})
-                (or (> difference 0.0001) (< difference -0.0001))) {call('FailPlan')} (break))))
-    (return))
-  {s('BuildIndex', '0')} {s('State', '6')})
+  {s('TierCount', '0')} {s('TierScore', '0.0')} {s('PolicyCursor', '0')} {s('State', '7')})
 """
 
 row_potential = a('U', f"(+ {g('ScanRow')} 1)")
 worker_potential = a('V', f"(+ {g('ScanWorker')} 1)")
-dummy_potential = a('V', f"(+ {g('WorkerCount')} 1)")
 code["RefinePass"] = f"""
 (fn RefinePass ()
-  (bind count {length('BaseScores')})
-  {s('BuildEnd', f'(select (< (+ {g("BuildIndex")} 256) count) (+ {g("BuildIndex")} 256) count)')}
-  (for n (range {g('BuildIndex')} {g('BuildEnd')})
-    {s('ScanRow', f'(/ n {g("WorkerCount")})')} {s('ScanWorker', f'(- n (* {g("ScanRow")} {g("WorkerCount")}))')}
+  (bind n {g('BuildIndex')})
+  (if (< n {length('ExpandedScores')})
+    {s('ScanRow', f'(/ n {g("SolveColumns")})')} {s('ScanWorker', f'(- n (* {g("ScanRow")} {g("SolveColumns")}))')}
     {s('ReducedCost', f'(- (- (- {a("PassScores", "n")}) {row_potential}) {worker_potential})')}
-    {set_a('AllowedEdges', 'n', f'(and {a("AllowedEdges", "n")} (and (>= {g("ReducedCost")} -0.00001) (<= {g("ReducedCost")} 0.00001)))')})
-  {s('BuildIndex', g('BuildEnd'))}
-  (if (< {g('BuildIndex')} count) (return))
-  (for r (range {g('SlotCount')})
-    {s('ReducedCost', f'(+ {a("U", "(+ r 1)")} {dummy_potential})')}
-    {set_a('AllowedEmpty', 'r', f'(and {a("AllowedEmpty", "r")} (and (>= {g("ReducedCost")} -0.00001) (<= {g("ReducedCost")} 0.00001)))')})
-  (for w (range {g('WorkerCount')})
-    (if (< {a('V', '(+ w 1)')} -0.00001) {set_a('RequiredWorker', 'w', 'true')}))
-  {s('Tier', f'(select {g("StrictMode")} (- {g("Tier")} 1) -1)')}
-  {call('BeginPass')})
+    {set_a('AllowedEdges', 'n', f'(and {a("AllowedEdges", "n")} (and (>= {g("ReducedCost")} -0.00001) (<= {g("ReducedCost")} 0.00001)))')}
+    {s('BuildIndex', '(+ n 1)')} (return))
+  {s('PolicyCursor', '0')} {s('State', '30')})
 """
 
+policy_worker_score = a('BaseScores', f'(+ (* i {g("WorkerCount")}) worker)')
+coverage_index = f"(+ (* {g('ScanRow')} {g('WorkerCount')}) w)"
+# Each helper executes one primitive item or one constant-size transition.
+# Solver Advance owns the entire budget when delegated; never nest two budgets.
+code["PolicyStep"] = f"""
+(fn PolicyStep ()
+  (bind state {g('State')}) (bind i {g('PolicyCursor')})
+  (switch int state
+    (:0 {call('ValidateBlock')})
+    (:1 {call('SelectBuilding')})
+    (:2 {call('BeginCoverage')})
+    (:3 {call('CoverageStep')})
+    (:4 {call('BuildPass')})
+    (:5 {call('SolvePass')})
+    (:6 {call('RefinePass')})
+    (:10
+      (if (< i {g('BuildingCount')})
+        {set_a('BuildingFirstRow', 'i', '-1')} {set_a('BuildingLastRow', 'i', '-1')}
+        (if (or (< {a('Priorities', 'i')} 0) (> {a('Priorities', 'i')} 4)) {call('FailPlan')})
+        {s('PolicyCursor', '(+ i 1)')}
+        (else {s('PolicyCursor', '0')} {s('State', '11')})))
+    (:11
+      (if (< i {g('RealSlotCount')})
+        {set_a('PlanAssignment', 'i', '-1')} {set_a('CoverageSlotMatch', 'i', '-1')}
+        {set_a('FixedSlots', 'i', '-1')} {set_a('AllowedEmpty', 'i', 'true')}
+        {set_a('NextBuildingRow', 'i', '-1')}
+        (bind building {a('SlotBuildings', 'i')})
+        (if (or (< building 0) (>= building {g('BuildingCount')})) {call('FailPlan')}
+          (else
+            {set_a('SlotCountByBuilding', 'building', f'(+ {a("SlotCountByBuilding", "building")} 1)')}
+            (if {a('Minimum', 'i')} {set_a('MinimumCount', 'building', f'(+ {a("MinimumCount", "building")} 1)')})
+            (if (< {a('BuildingFirstRow', 'building')} 0) {set_a('BuildingFirstRow', 'building', 'i')}
+              (else {set_a('NextBuildingRow', a('BuildingLastRow', 'building'), 'i')}))
+            {set_a('BuildingLastRow', 'building', 'i')}))
+        {s('PolicyCursor', '(+ i 1)')}
+        (else {s('PolicyCursor', '0')} {s('State', '12')})))
+    (:12
+      (if (< i {g('BuildingCount')})
+        (if (== {a('SlotCountByBuilding', 'i')} 0) {set_a('Processed', 'i', 'true')}
+          (else
+            (if (and (== {a('MinimumCount', 'i')} 0) (not {a('FlexibleMinimum', 'i')})) {call('FailPlan')})
+            (if (and (> {a('MinimumCount', 'i')} 0) {a('FlexibleMinimum', 'i')}) {call('FailPlan')})))
+        {s('PolicyCursor', '(+ i 1)')}
+        (else {s('PolicyCursor', '0')} {s('State', '13')})))
+    (:13
+      (if (< i {g('WorkerCount')})
+        {set_a('CoverageWorkerMatch', 'i', '-1')} {set_a('FixedOwners', 'i', '-1')} {s('PolicyCursor', '(+ i 1)')}
+        (else {s('PolicyCursor', '0')} {s('State', '14')})))
+    (:14
+      (if (and {g('FixedConfigured')} (< i {g('RealSlotCount')}))
+        (bind worker {a('PendingFixed', 'i')})
+        (if (or (< worker -1) (>= worker {g('WorkerCount')})) {call('FailPlan')}
+          (elif (>= worker 0)
+            (if (or (>= {a('FixedOwners', 'worker')} 0)
+              (not (>= {a('BaseScores', f'(+ (* i {g("WorkerCount")}) worker)')} 0.0))) {call('FailPlan')}
+              (else
+                {set_a('FixedOwners', 'worker', 'i')} {set_a('CoverageWorkerMatch', 'worker', 'i')}
+                {set_a('CoverageSlotMatch', 'i', 'worker')} {set_a('AllowedEmpty', 'i', 'false')}
+                {set_a('RequiredWorker', 'worker', 'true')} {set_a('FixedSlots', 'i', 'worker')}))))
+        {s('PolicyCursor', '(+ i 1)')}
+        (else {s('PolicyCursor', '0')} {s('State', '15')})))
+    (:15
+      (if (and (> {g('ReserveCount')} 0) (< i {g('WorkerCount')}))
+        (bind quality {a('ReserveQuality', 'i')})
+        (if (not (and (>= quality 0.0) (<= quality 1000000.0))) {call('FailPlan')})
+        {s('PolicyCursor', '(+ i 1)')}
+        (else {s('State', '16')})))
+    (:16
+      (if (> {g('ReserveCount')} 0)
+        (Utilities|Array|Add {g('Priorities')} -1) (Utilities|Array|Add {g('Accepted')} true)
+        (Utilities|Array|Add {g('Processed')} true) (Utilities|Array|Add {g('MinimumCount')} {g('ReserveCount')})
+        (Utilities|Array|Add {g('SlotCountByBuilding')} {g('ReserveCount')})
+        (Utilities|Array|Add {g('FlexibleMinimum')} false) (Utilities|Array|Add {g('BuildingHasFixed')} false)
+        (Utilities|Array|Add {g('OpenCount')} 0) (Utilities|Array|Add {g('OptionalOpenCount')} 0) (Utilities|Array|Add {g('BuildingFilled')} false)
+        (Utilities|Array|Add {g('BuildingFirstRow')} -1) (Utilities|Array|Add {g('BuildingLastRow')} -1)
+        {s('ReserveRow', '0')} {s('State', '17')}
+        (else
+          (if (or (== {g('SlotCount')} 0) (== {g('WorkerCount')} 0))
+            {s('PlanDone', 'true')} {s('PlanSucceeded', 'true')}
+            (else {s('State', '0')})))))
+    (:17
+      (if (< {g('ReserveRow')} {g('ReserveCount')})
+        (Utilities|Array|Add {g('SlotBuildings')} {g('BuildingCount')}) (Utilities|Array|Add {g('Minimum')} true)
+        (Utilities|Array|Add {g('FixedSlots')} -1) (Utilities|Array|Add {g('AllowedEmpty')} false)
+        (Utilities|Array|Add {g('PlanAssignment')} -1) (Utilities|Array|Add {g('CoverageSlotMatch')} -1)
+        (Utilities|Array|Add {g('NextBuildingRow')} -1)
+        {s('FoundWorker', '-1')} {s('ScanWorker', '0')} {s('State', '18')}
+        (else
+          {s('SlotCount', f'(+ {g("RealSlotCount")} {g("ReserveCount")})')}
+          {s('BuildingCount', f'(+ {g("BuildingCount")} 1)')} {s('State', '0')})))
+    (:18
+      (bind w {g('ScanWorker')})
+      (if (< w {g('WorkerCount')})
+        (bind eligible (and (< w {g('ReserveMovable')}) (< {a('FixedOwners', 'w')} 0)))
+        (Utilities|Array|Add {g('BaseScores')} (select eligible {a('ReserveQuality', 'w')} -1e20))
+        (Utilities|Array|Add {g('AllowedEdges')} eligible)
+        (if (and eligible (and (< {g('FoundWorker')} 0) (< {a('CoverageWorkerMatch', 'w')} 0))) {s('FoundWorker', 'w')})
+        {s('ScanWorker', '(+ w 1)')}
+        (else
+          (if (< {g('FoundWorker')} 0) {call('FailPlan')}
+            (else
+              (bind row (+ {g('RealSlotCount')} {g('ReserveRow')}))
+              {set_a('CoverageSlotMatch', 'row', g('FoundWorker'))} {set_a('CoverageWorkerMatch', g('FoundWorker'), 'row')}
+              {s('ReserveRow', f'(+ {g("ReserveRow")} 1)')} {s('State', '17')})))))
+    (:21
+      (bind w {g('ScanWorker')})
+      (if (< w {g('WorkerCount')}) {set_a('Visited', 'w', 'false')} {s('ScanWorker', '(+ w 1)')}
+        (else
+          (Utilities|Array|Clear {g('Queue')}) (Utilities|Array|Add {g('Queue')} {g('RootSlot')})
+          {s('QueueHead', '0')} {s('State', '3')})))
+    (:24
+      (bind w {g('ScanWorker')})
+      (if (< w {g('WorkerCount')})
+        (if {a('Visited', 'w')} {s('ScanWorker', '(+ w 1)')} {reset_union} (return))
+        (if (>= {g('SearchRow')} {g('SlotCount')})
+          (if (< {g('UnionRow')} 0) {s('ScanWorker', '(+ w 1)')} {reset_union} (return))
+          {s('ScanRow', g('UnionRow'))}
+          (if (>= {a('FixedSlots', g('ScanRow'))} 0)
+            {s('UnionRow', a('NextBuildingRow', g('ScanRow')))} (return))
+          (else {s('ScanRow', g('SearchRow'))}))
+        (if (and (not {a('Visited', 'w')}) (>= {a('BaseScores', coverage_index)} 0.0))
+          {set_a('Visited', 'w', 'true')} {set_a('ParentRow', 'w', g('SearchRow'))}
+          (if (< {a('CoverageWorkerMatch', 'w')} 0) {s('FoundWorker', 'w')} {s('State', '22')}
+            (else (Utilities|Array|Add {g('Queue')} {a('CoverageWorkerMatch', 'w')})))
+          {s('ScanWorker', '(+ w 1)')} {reset_union}
+          (else
+            (if (>= {g('SearchRow')} {g('SlotCount')}) {s('UnionRow', a('NextBuildingRow', g('ScanRow')))}
+              (else {s('ScanWorker', '(+ w 1)')}))))
+        (else {s('State', '3')})))
+    (:22
+      (if (>= {g('FoundWorker')} 0)
+        {s('AugmentRow', a('ParentRow', g('FoundWorker')))} {s('PreviousWorker', a('CoverageSlotMatch', g('AugmentRow')))}
+        {set_a('CoverageSlotMatch', g('AugmentRow'), g('FoundWorker'))}
+        {set_a('CoverageWorkerMatch', g('FoundWorker'), g('AugmentRow'))} {s('FoundWorker', g('PreviousWorker'))}
+        (else {s('State', '2')})))
+    (:7
+      (if (or (< i {g('SolveColumns')}) (< i {g('BuildingCount')}))
+        (if (< i {g('SolveColumns')}) {set_a('ReservedWorker', 'i', 'false')})
+        (if (< i {g('BuildingCount')}) {set_a('BuildingFilled', 'i', 'false')}) {s('PolicyCursor', '(+ i 1)')}
+        (else {s('PolicyCursor', '0')} {s('State', '8')})))
+    (:8
+      (if (< i {g('SlotCount')})
+        (bind building {a('SlotBuildings', 'i')}) (bind worker {a('Assignment', 'i')})
+        (if (and (>= worker 0) (< worker {g('SolveColumns')}))
+          {set_a('ReservedWorker', 'worker', 'true')}
+          (bind n (+ (* i {g('SolveColumns')}) worker))
+          (if (not {a('AllowedEdges', 'n')}) {call('FailPlan')})
+          (if (and (>= {a('FixedSlots', 'i')} 0) (!= worker {a('FixedSlots', 'i')})) {call('FailPlan')})
+          (if (< worker {g('WorkerCount')})
+            {set_a('BuildingFilled', 'building', 'true')}
+            (if (== {a('Priorities', 'building')} {g('Tier')})
+              {s('TierCount', f'(+ {g("TierCount")} 1)')} {s('TierScore', f'(+ {g("TierScore")} {policy_worker_score})')}))
+          (else {call('FailPlan')}))
+        {s('PolicyCursor', '(+ i 1)')}
+        (else {s('PolicyCursor', '0')} {s('State', '9')})))
+    (:9
+      (if (< i {g('SolveColumns')})
+        (if (and {a('RequiredWorker', 'i')} (not {a('ReservedWorker', 'i')})) {call('FailPlan')}) {s('PolicyCursor', '(+ i 1)')}
+        (else {s('PolicyCursor', '0')} {s('State', '31')})))
+    (:31
+      (if (< i {g('BuildingCount')})
+        (if (and {a('FlexibleMinimum', 'i')} (and {a('Accepted', 'i')} (not {a('BuildingFilled', 'i')}))) {call('FailPlan')})
+        {s('PolicyCursor', '(+ i 1)')}
+        (else
+          (if (>= {g('Tier')} 0)
+            {set_a('ExpectedCounts', g('Tier'), g('TierCount'))} {set_a('ExpectedScores', g('Tier'), g('TierScore'))})
+          (if (or (< {g('Tier')} 0) (and (== {g('ReserveCount')} 0) (or (not {g('StrictMode')}) (== {g('Tier')} 0))))
+            {s('BuilderTotal', '0.0')} {s('PolicyCursor', g('RealSlotCount'))} {s('State', '25')}
+            (else {s('BuildIndex', '0')} {s('State', '6')})))))
+    (:25
+      (if (< i {g('SlotCount')})
+        (bind worker {a('Assignment', 'i')})
+        (if (< worker 0) {call('FailPlan')}
+          (else {s('BuilderTotal', f'(+ {g("BuilderTotal")} {policy_worker_score})')}))
+        {s('PolicyCursor', '(+ i 1)')}
+        (else
+          {s('PlanAssignment', g('Assignment'))} (Utilities|Array|Resize {g('PlanAssignment')} {g('RealSlotCount')})
+          {s('PolicyCursor', '0')} {s('State', '32')})))
+    (:32
+      (if (< i {g('RealSlotCount')})
+        (if (>= {a('PlanAssignment', 'i')} {g('WorkerCount')}) {set_a('PlanAssignment', 'i', '-1')})
+        {s('PolicyCursor', '(+ i 1)')}
+        (else
+          (if {g('StrictMode')} {s('Tier', '0')} {s('PolicyCursor', '0')} {s('TierCount', '0')} {s('TierScore', '0.0')} {s('State', '27')}
+            (else {s('PlanDone', 'true')} {s('PlanSucceeded', 'true')})))))
+    (:27
+      (if (< i {g('RealSlotCount')})
+        (bind building {a('SlotBuildings', 'i')}) (bind worker {a('PlanAssignment', 'i')})
+        (if (and (>= worker 0) (== {a('Priorities', 'building')} {g('Tier')}))
+          {s('TierCount', f'(+ {g("TierCount")} 1)')}
+          {s('TierScore', f'(+ {g("TierScore")} {policy_worker_score})')})
+        {s('PolicyCursor', '(+ i 1)')}
+        (else
+          (bind difference (- {g('TierScore')} {a('ExpectedScores', g('Tier'))}))
+          (if (or (!= {g('TierCount')} {a('ExpectedCounts', g('Tier'))}) (or (> difference 0.0001) (< difference -0.0001))) {call('FailPlan')}
+            (else (if (== {g('Tier')} 4) {s('PlanDone', 'true')} {s('PlanSucceeded', 'true')}
+              (else {s('Tier', f'(+ {g("Tier")} 1)')} {s('PolicyCursor', '0')} {s('TierCount', '0')} {s('TierScore', '0.0')})))))))
+    (:29 {call('FailPlan')})
+    (:30
+      (if (< i {g('SolveColumns')})
+        (if (< {a('V', '(+ i 1)')} -0.00001) {set_a('RequiredWorker', 'i', 'true')})
+        {s('PolicyCursor', '(+ i 1)')}
+        (else {s('Tier', f'(select {g("StrictMode")} (- {g("Tier")} 1) -1)')} {call('BeginPass')})))
+    (:19
+      (if (< i {g('SlotCount')})
+        (bind b {a('SlotBuildings', 'i')})
+        (if (>= {a('FixedSlots', 'i')} 0) {set_a('BuildingHasFixed', 'b', 'true')}
+          (else {set_a('OpenCount', 'b', f'(+ {a("OpenCount", "b")} 1)')}
+            (if (not {a('Minimum', 'i')}) {set_a('OptionalOpenCount', 'b', f'(+ {a("OptionalOpenCount", "b")} 1)')})))
+        {s('PolicyCursor', '(+ i 1)')}
+        (elif (< i (+ {g('SlotCount')} {g('BuildingCount')}))
+          (Utilities|Array|Add {g('CoverageSlotMatch')} -1) {s('PolicyCursor', '(+ i 1)')}
+          (else {s('PolicyCursor', '0')} {s('State', '1')}))))
+    (:20
+      (if (< i {g('BuildingCount')})
+        {s('CurrentBuilding', 'i')} {s('DummyRemaining', a('OpenCount', 'i'))}
+        (if {a('Accepted', 'i')}
+          (if {a('FlexibleMinimum', 'i')}
+            (if (not {a('BuildingHasFixed', 'i')}) {s('DummyRemaining', f'(- {g("DummyRemaining")} 1)')})
+            (else {s('DummyRemaining', a('OptionalOpenCount', 'i'))})))
+        (if (< {g('DummyRemaining')} 0) {call('FailPlan')})
+        {s('PolicyCursor', '(+ i 1)')} {s('State', '23')}
+        (else
+          {s('SolveColumns', f'(+ {g("WorkerCount")} {length("DummyBuildings")})')}
+          (if (> {g('SolveColumns')} 10000) {call('FailPlan')} (return))
+          {reset('ExpandedScores', f'(* {g("SlotCount")} {g("SolveColumns")})')}
+          {reset('AllowedEdges', f'(* {g("SlotCount")} {g("SolveColumns")})')}
+          (Utilities|Array|Resize {g('RequiredWorker')} {g('SolveColumns')})
+          (Utilities|Array|Resize {g('ReservedWorker')} {g('SolveColumns')})
+          {s('BuildIndex', '0')} {s('State', '26')})))
+    (:23
+      (if (> {g('DummyRemaining')} 0)
+        (Utilities|Array|Add {g('DummyBuildings')} {g('CurrentBuilding')}) {s('DummyRemaining', f'(- {g("DummyRemaining")} 1)')}
+        (else {s('State', '20')})))
+    (:26
+      (bind n {g('BuildIndex')})
+      (if (< n {length('ExpandedScores')})
+        {s('ScanRow', f'(/ n {g("SolveColumns")})')} {s('ScanWorker', f'(- n (* {g("ScanRow")} {g("SolveColumns")}))')}
+        (bind b {a('SlotBuildings', g('ScanRow'))}) {s('EdgeScore', '-1e20')}
+        (if (< {g('ScanWorker')} {g('WorkerCount')})
+          (if (or {a('Accepted', 'b')} (>= {a('FixedSlots', g('ScanRow'))} 0))
+            {s('EdgeScore', a('BaseScores', f'(+ (* {g("ScanRow")} {g("WorkerCount")}) {g("ScanWorker")})'))})
+          (else
+            (if (and (== {a('DummyBuildings', f'(- {g("ScanWorker")} {g("WorkerCount")})')} b)
+              (and (< {a('FixedSlots', g('ScanRow'))} 0) (not (and {a('Minimum', g('ScanRow'))} {a('Accepted', 'b')}))))
+              {s('EdgeScore', '0.0')})))
+        {set_a('ExpandedScores', 'n', g('EdgeScore'))} {set_a('AllowedEdges', 'n', f'(>= {g("EdgeScore")} 0.0)')}
+        {s('BuildIndex', '(+ n 1)')}
+        (else {s('PolicyCursor', '0')} {s('State', '28')})))
+    (:28
+      (if (< i {g('SlotCount')}) {set_a('AllowedEmpty', 'i', 'false')} {s('PolicyCursor', '(+ i 1)')}
+        (else {s('CurrentBuilding', '-1')} {call('BeginPass')})))
+    (:Default {call('FailPlan')})))
+"""
 code["AdvancePlan"] = f"""
 (fn AdvancePlan ()
-  (if {g('PlanDone')} (return))
-  (switch int {g('State')}
-    (:0 {call('ValidateBlock')}) (:1 {call('SelectBuilding')})
-    (:2 {call('BeginCoverage')}) (:3 {call('CoverageStep')})
-    (:4 {call('BuildPass')}) (:5 {call('SolvePass')}) (:6 {call('RefinePass')})
-    (:Default {call('FailPlan')})))
+  {s('LastStepWork', '0')} (if {g('PlanDone')} (return))
+  (if (<= {g('StepWorkLimit')} 0) {call('FailPlan')} (return))
+  (if (and (== {g('State')} 5) (not {g('Done')})) {call('Advance')} (return))
+  {s('PolicyWork', '0')}
+  (for work (range {g('StepWorkLimit')})
+    {s('PolicyWork', '(+ work 1)')} {call('PolicyStep')}
+    (if (or {g('PlanDone')} (== {g('State')} 5)) (break)))
+  {s('LastStepWork', g('PolicyWork'))})
 """
 
 for source in code.values():

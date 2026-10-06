@@ -1,0 +1,11 @@
+{
+  "game_version": "0.7.209.0",
+  "languages": ["en", "fr", "de", "it", "es", "ru", "ja", "zh", "ko", "tr", "pt", "pl", "ua", "cs", "hu", "zh-tw", "es-mx"],
+  "source": {
+    "archive": "Whiskerwood/Content/Paks/Whiskerwood-Windows.pak",
+    "assets": ["Content/Data/TextDB/Loc_Root", "native language assets"],
+    "evidence": "Read-only inspection of game version 0.7.209.0 on 2026-10-05; no standalone extraction JSON retained.",
+    "registration": "Production RegisterStrings uses native ModAPI.ListLanguageIds; catalog completeness tests do not substitute for a shipping runtime language-list observation."
+  },
+  "regional_notes": {"pt": "Brazilian Portuguese", "ua": "Ukrainian", "zh-tw": "Traditional Chinese", "es-mx": "Latin American Spanish"}
+}

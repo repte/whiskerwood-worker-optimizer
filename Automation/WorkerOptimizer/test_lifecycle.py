@@ -1,6 +1,7 @@
 """Verify compiled map-load ownership, delegate and shutdown guards."""
 
 import unreal
+from editor_toolset.toolsets.blueprint import BlueprintTools as BP
 
 
 def run():
@@ -12,6 +13,14 @@ def run():
     spawned = []
     api = unreal.new_object(unreal.load_class(None, "/Script/SystemCore.ModAPI"))
     event = api.get_editor_property("onLoadingFinished")
+    bp = unreal.load_asset(root + "BP_MapLoad")
+    for function, node_name in (("BindDay", "BindEventtoOnDayStart"), ("UnbindDay", "UnbindEventfromOnDayStart")):
+        graph = BP.get_graph(bp, function)
+        source = BP.read_graph_dsl(graph)
+        assert node_name in source and "GetAPI" in source, "Bind/unbind must use the owned API"
+        delegates = [node for node in BP.find_nodes(graph) if isinstance(node, unreal.K2Node_CreateDelegate)]
+        assert len(delegates) == 1 and BP.get_create_event_function(delegates[0]) == "OnDayStart"
+    assert "UnbindDay" in BP.read_graph_dsl(BP.get_graph(bp, "Shutdown"))
     broadcast = lambda: unreal.WorkerOptimizerTestSupport.broadcast_loading_finished(api)
     assert not unreal.WorkerOptimizerTestSupport.broadcast_loading_finished(None)
 
@@ -57,8 +66,14 @@ def run():
         assert primary.call_method("InstallSession", args=(controller, bridge, view))
         assert primary.get_editor_property("Ready")
         assert controller.get_editor_property("Initialized")
+        logbook = primary.get_editor_property("Logbook")
+        assert logbook and controller.get_editor_property("Logbook") == logbook, "History service belongs to this session"
+        assert logbook.get_editor_property("Context") == primary
         assert controller.get_editor_property("Context") == primary
         assert not controller.get_editor_property("RunActive"), "Loading never starts optimization"
+        assert primary.call_method("PollAutomatic") is False, "Missing editor-native calendar/pause inputs cannot trigger work"
+        primary.call_method("OnDayStart", args=(99,))
+        assert not controller.get_editor_property("RunActive")
         assert bridge.get_editor_property("BridgeReady")
         assert bridge.get_editor_property("ActionContext") == view
         assert not bridge.call_method("IsActorTickEnabled")
@@ -73,6 +88,7 @@ def run():
         duplicate.call_method("Shutdown")
         assert event.contains_function(primary, "OnLoaded"), "A duplicate must not unbind the primary"
         primary.call_method("Shutdown")
+        assert logbook.get_editor_property("Closed"), "Unload closes storage after terminal report publication"
         assert not event.contains_function(primary, "OnLoaded")
         assert event.contains_function(foreign_listener, "OnLoaded"), "Never unbind another mod's event handler"
         assert primary.get_editor_property("ShuttingDown")

@@ -108,13 +108,11 @@ code["BeginBuild"] = f"""(fn BeginBuild (InputSnapshot InputWorkers)
     (if {g('BuildActive')} (return false))
     {put('BuildDone', 'false')} {put('BuildSucceeded', 'false')} {put('FailureCode', '"None"')}
     {' '.join(f'(Utilities|Array|Clear {g(n)})' for n in arrays)}
-    {put('Stage', '0')} {put('BuildingIndex', '0')} {put('SlotIndex', '0')} {put('RowIndex', '0')}
+    {put('Stage', '6')} {put('BuildingIndex', '0')} {put('SlotIndex', '0')} {put('RowIndex', '0')}
     (if (not {present('InputSnapshot')}) {fail('invalid_snapshot')})
     (if (not (and {sg('SnapshotValid', 'InputSnapshot')} {sg('CaptureDone', 'InputSnapshot')})) {fail('invalid_snapshot')})
     (if (> (Utilities|Array|Length InputWorkers) 10000) {fail('invalid_shape')})
     {put('Snapshot', 'InputSnapshot')} {put('FinalWorkers', 'InputWorkers')}
-    (for building (range (Utilities|Array|Length {sg('Buildings')}))
-      {add('BuildingStarts', '-1')} {add('BuildingHasAny', 'false')} {add('BuildingHasMovable', 'false')} {add('BuildingMissingRequired', 'false')})
     {put('BuildActive', 'true')} (return true))"""
 code["CaptureRow"] = f"""(fn CaptureRow ()
     (if (not (Utilities|Array|IsValidIndex {g('FinalWorkers')} {g('RowIndex')})) {fail('invalid_shape')})
@@ -174,6 +172,11 @@ code["AdvanceBuild"] = f"""(fn AdvanceBuild ()
     (if (not {g('BuildActive')}) (return false))
     (if (not {present(g('Snapshot'))}) {fail('invalid_snapshot')})
     (if (not (and {sg('SnapshotValid')} {sg('CaptureDone')})) {fail('invalid_snapshot')})
+    (if (== {g('Stage')} 6)
+      (if (>= {g('BuildingIndex')} (Utilities|Array|Length {sg('Buildings')}))
+        {put('BuildingIndex', '0')} {put('Stage', '0')} (return true))
+      {add('BuildingStarts', '-1')} {add('BuildingHasAny', 'false')} {add('BuildingHasMovable', 'false')} {add('BuildingMissingRequired', 'false')}
+      {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')} (return true))
     (if (== {g('Stage')} 0)
       (if (>= {g('BuildingIndex')} (Utilities|Array|Length {sg('Buildings')}))
         (if (!= {g('RowIndex')} (Utilities|Array|Length {g('FinalWorkers')})) {fail('invalid_shape')})

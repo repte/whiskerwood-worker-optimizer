@@ -14,7 +14,9 @@ if bp is None:
     bp = BP.create(ROOT, NAME, unreal.Object.static_class())
 
 variables = {
-    "Done": ("bool", False), "Succeeded": ("bool", False),
+    "Done": ("bool", False), "Succeeded": ("bool", False), "DummiesRestricted": ("bool", False),
+    "SolverState": ("int", False), "Cursor": ("int", False),
+    "StepWorkLimit": ("int", False), "LastStepWork": ("int", False),
     "Rows": ("int", False), "Cols": ("int", False), "Width": ("int", False),
     "ActiveRow": ("int", False), "J0": ("int", False), "J1": ("int", False),
     "I0": ("int", False), "Delta": ("float", False), "Cur": ("float", False),
@@ -27,6 +29,7 @@ existing = BP.list_variables(bp)
 for name, (kind, array) in variables.items():
     if name not in existing:
         BP.add_variable(bp, name, kind, container_type=ContainerType.ARRAY if array else None)
+BP.set_variable_instance_editable(bp, "StepWorkLimit", True)
 
 graphs = {}
 existing_graphs = {str(g.get_name()) for g in BP.list_graphs(bp)}
@@ -79,15 +82,14 @@ begin = f"""
 (fn BeginRow ()
   {set_at('P', '0', get('ActiveRow'))}
   {put('J0', '0')}
-  (for j (range (+ {get('Width')} 1))
-    {set_at('Used', 'j', 'false')}
-    {set_at('MinV', 'j', '1e30')}))
+  {put('Cursor', '0')} {put('SolverState', '3')})
 """
 
 initialize = f"""
 (fn Initialize (IncomingScores RowCount ColumnCount)
   {put('Done', 'true')}
   {put('Succeeded', 'false')}
+  {put('DummiesRestricted', 'false')}
   (Utilities|Array|Clear {get('Assignment')})
   (if (or (< RowCount 0) (< ColumnCount 0)) (return))
   ; Bound multiplication before validating matrix size.
@@ -105,83 +107,95 @@ initialize = f"""
   {reset('MinV', f'(+ {get("Width")} 1)')}
   {reset('Assignment', 'RowCount')}
   {reset('DummyAllowed', 'RowCount')}
-  (for i (range RowCount) {set_at('Assignment', 'i', '-1')} {set_at('DummyAllowed', 'i', 'true')})
-  {put('Succeeded', 'true')}
-  (if (== RowCount 0) (return))
+  {put('LastStepWork', '0')}
+  {put('Succeeded', 'true')} (if (== RowCount 0) (return))
   {put('Succeeded', 'false')}
   {put('ValidationIndex', '0')}
   {put('Done', 'false')}
-  {put('ActiveRow', '1')}
-  {call('BeginRow')})
+  {put('ActiveRow', '1')} {put('Cursor', '0')} {put('SolverState', '0')})
 """
 
 restrict_dummies = f"""
 (fn RestrictDummies (Mask)
   (if (!= (Utilities|Array|Length Mask) {get('Rows')})
     {put('Done', 'true')} {put('Succeeded', 'false')} (return))
-  {put('DummyAllowed', 'Mask')})
+  {put('DummyAllowed', 'Mask')} {put('DummiesRestricted', 'true')})
 """
 
 score_index = f"(+ (* (- {get('I0')} 1) {get('Cols')}) (- j 1))"
 negative_score = f"(- {at('Scores', score_index)})"
+dummy_allowed = at('DummyAllowed', f'(- {get("I0")} 1)')
 advance = f"""
 (fn Advance ()
-  (if {get('Done')} (return))
-  (bind scoreCount (Utilities|Array|Length {get('Scores')}))
-  (if (< {get('ValidationIndex')} scoreCount)
-    {put('ValidationEnd', f'(select (< (+ {get("ValidationIndex")} 512) scoreCount) (+ {get("ValidationIndex")} 512) scoreCount)')}
-    (for n (range {get('ValidationIndex')} {get('ValidationEnd')})
-      (bind score {at('Scores', 'n')})
-      (if (not (and (>= score -1e20) (<= score 1e20)))
-        {put('Done', 'true')}
-        {put('Succeeded', 'false')}
-        (break)))
-    (if {get('Done')} (return))
-    {put('ValidationIndex', get('ValidationEnd'))}
-    (if (< {get('ValidationIndex')} scoreCount) (return)))
-  {put('Succeeded', 'true')}
-  {set_at('Used', get('J0'), 'true')}
-  {put('I0', at('P', get('J0')))}
-  {put('Delta', '1e30')}
-  {put('J1', '0')}
-  (for j (range 1 (+ {get('Width')} 1))
-    (if (not {at('Used', 'j')})
-      {put('Cur', '0.0')}
-      (if (not {at('DummyAllowed', f'(- {get("I0")} 1)')}) {put('Cur', '1e29')})
-      (if (<= j {get('Cols')})
-        {put('Cur', negative_score)})
-      {put('Cur', f'(- (- {get("Cur")} {at("U", get("I0"))}) {at("V", "j")})')}
-      (if (< {get('Cur')} {at('MinV', 'j')})
-        {set_at('MinV', 'j', get('Cur'))}
-        {set_at('Way', 'j', get('J0'))})
-      ; A free column at equal distance ends the search without displacing ties.
-      (if (or (< {at('MinV', 'j')} {get('Delta')})
-              (and (== {at('MinV', 'j')} {get('Delta')})
-                   (and (== {at('P', 'j')} 0) (!= {at('P', get('J1'))} 0))))
-        {put('Delta', at('MinV', 'j'))}
-        {put('J1', 'j')})))
-  (for j (range (+ {get('Width')} 1))
-    (if {at('Used', 'j')}
-      {set_at('U', at('P', 'j'), f'(+ {at("U", at("P", "j"))} {get("Delta")})')}
-      {set_at('V', 'j', f'(- {at("V", "j")} {get("Delta")})')}
-      (else
-        {set_at('MinV', 'j', f'(- {at("MinV", "j")} {get("Delta")})')})))
-  {put('J0', get('J1'))}
-  (if (== {at('P', get('J0'))} 0)
-    (while (!= {get('J0')} 0)
-      {put('J1', at('Way', get('J0')))}
-      {set_at('P', get('J0'), at('P', get('J1')))}
-      {put('J0', get('J1'))})
-    {put('ActiveRow', f'(+ {get("ActiveRow")} 1)')}
-    (if (> {get('ActiveRow')} {get('Rows')})
-      (for j (range 1 (+ {get('Cols')} 1))
-        (if (> {at('P', 'j')} 0)
-          {set_at('Assignment', f'(- {at("P", "j")} 1)', '(- j 1)')}))
-      (for r (range {get('Rows')})
-        (if (and (< {at('Assignment', 'r')} 0) (not {at('DummyAllowed', 'r')}))
-          {put('Succeeded', 'false')}))
-      {put('Done', 'true')}
-      (else {call('BeginRow')}))))
+  {put('LastStepWork', '0')} (if {get('Done')} (return))
+  (if (<= {get('StepWorkLimit')} 0) {put('Done', 'true')} {put('Succeeded', 'false')} (return))
+  (for work (range (select (> {get('StepWorkLimit')} 0) {get('StepWorkLimit')} 1))
+    (if {get('Done')} (break))
+    {put('LastStepWork', f'(+ {get("LastStepWork")} 1)')}
+    (switch int {get('SolverState')}
+      (:0
+        (if (< {get('ValidationIndex')} (Utilities|Array|Length {get('Scores')}))
+          (bind score {at('Scores', get('ValidationIndex'))})
+          (if (not (and (>= score -1e20) (<= score 1e20))) {put('Done', 'true')})
+          {put('ValidationIndex', f'(+ {get("ValidationIndex")} 1)')}
+          (else {put('SolverState', '1')} {put('Cursor', '0')})))
+      (:1
+        (if (< {get('Cursor')} {get('Rows')})
+          {set_at('Assignment', get('Cursor'), '-1')}
+          (if (not {get('DummiesRestricted')}) {set_at('DummyAllowed', get('Cursor'), 'true')})
+          {put('Cursor', f'(+ {get("Cursor")} 1)')}
+          (else {put('Succeeded', 'true')} {call('BeginRow')})))
+      (:2 {put('Done', 'true')} {put('Succeeded', 'false')})
+      (:3
+        (if (<= {get('Cursor')} {get('Width')})
+          {set_at('Used', get('Cursor'), 'false')} {set_at('MinV', get('Cursor'), '1e30')}
+          {put('Cursor', f'(+ {get("Cursor")} 1)')}
+          (else {put('SolverState', '4')})))
+      (:4
+        {set_at('Used', get('J0'), 'true')} {put('I0', at('P', get('J0')))}
+        {put('Delta', '1e30')} {put('J1', '0')} {put('Cursor', '1')} {put('SolverState', '5')})
+      (:5
+        (if (<= {get('Cursor')} {get('Width')})
+          (bind j {get('Cursor')})
+          (if (not {at('Used', 'j')})
+            {put('Cur', f'(select {dummy_allowed} 0.0 1e29)')}
+            (if (<= j {get('Cols')}) {put('Cur', negative_score)})
+            {put('Cur', f'(- (- {get("Cur")} {at("U", get("I0"))}) {at("V", "j")})')}
+            (if (< {get('Cur')} {at('MinV', 'j')}) {set_at('MinV', 'j', get('Cur'))} {set_at('Way', 'j', get('J0'))})
+            (if (or (< {at('MinV', 'j')} {get('Delta')})
+              (and (== {at('MinV', 'j')} {get('Delta')}) (and (== {at('P', 'j')} 0) (!= {at('P', get('J1'))} 0))))
+              {put('Delta', at('MinV', 'j'))} {put('J1', 'j')}))
+          {put('Cursor', f'(+ {get("Cursor")} 1)')}
+          (else {put('Cursor', '0')} {put('SolverState', '6')})))
+      (:6
+        (if (<= {get('Cursor')} {get('Width')})
+          (bind j {get('Cursor')})
+          (if {at('Used', 'j')}
+            {set_at('U', at('P', 'j'), f'(+ {at("U", at("P", "j"))} {get("Delta")})')}
+            {set_at('V', 'j', f'(- {at("V", "j")} {get("Delta")})')}
+            (else {set_at('MinV', 'j', f'(- {at("MinV", "j")} {get("Delta")})')}))
+          {put('Cursor', f'(+ {get("Cursor")} 1)')}
+          (else {put('J0', get('J1'))} {put('SolverState', f'(select (== {at("P", get("J1"))} 0) 7 4)')})))
+      (:7
+        (if (!= {get('J0')} 0)
+          {put('J1', at('Way', get('J0')))} {set_at('P', get('J0'), at('P', get('J1')))} {put('J0', get('J1'))}
+          (else
+            {put('ActiveRow', f'(+ {get("ActiveRow")} 1)')}
+            (if (> {get('ActiveRow')} {get('Rows')}) {put('Cursor', '1')} {put('SolverState', '8')}
+              (else {call('BeginRow')})))))
+      (:8
+        (if (<= {get('Cursor')} {get('Cols')})
+          (bind j {get('Cursor')})
+          (if (> {at('P', 'j')} 0) {set_at('Assignment', f'(- {at("P", "j")} 1)', '(- j 1)')})
+          {put('Cursor', f'(+ {get("Cursor")} 1)')}
+          (else {put('Cursor', '0')} {put('SolverState', '9')})))
+      (:9
+        (if (< {get('Cursor')} {get('Rows')})
+          (bind r {get('Cursor')})
+          (if (and (< {at('Assignment', 'r')} 0) (not {at('DummyAllowed', 'r')})) {put('Succeeded', 'false')})
+          {put('Cursor', f'(+ {get("Cursor")} 1)')}
+          (else {put('Done', 'true')})))
+      (:Default {put('Done', 'true')} {put('Succeeded', 'false')}))))
 """
 
 for name, code in (("BeginRow", begin), ("Initialize", initialize), ("RestrictDummies", restrict_dummies), ("Advance", advance)):
@@ -190,6 +204,7 @@ for name, code in (("BeginRow", begin), ("Initialize", initialize), ("RestrictDu
     Path(unreal.Paths.project_saved_dir(), f"WorkerOptimizer-{name}.dsl").write_text(code, encoding="utf-8")
 with toolset_registry.tool_raising_exceptions():
     BP.compile_blueprint(bp, warnings_as_errors=True)
+unreal.get_default_object(bp.generated_class()).set_editor_property("StepWorkLimit", 64)
 assert unreal.EditorAssetLibrary.save_loaded_asset(bp)
 unreal.log("WO_SOLVER_GENERATED")
 exec(Path(__file__).with_name("test_solver.py").read_text(encoding="utf-8"))

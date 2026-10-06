@@ -63,7 +63,10 @@ def run():
             for _ in range(200):
                 if matrix.get_editor_property("MatrixDone"):
                     break
-                if matrix.get_editor_property("Stage") == 0:
+                if matrix.get_editor_property("SetupActive"):
+                    matrix.call_method("AdvanceMatrix")
+                    assert matrix.get_editor_property("LastStepWork") <= matrix.get_editor_property("StepWorkLimit")
+                elif matrix.get_editor_property("Stage") == 0:
                     assert matrix.call_method("RecordDefinition", args=("fixture", True))
                 elif matrix.get_editor_property("AwaitingScore"):
                     worker = matrix.get_editor_property("EdgeColumn")
@@ -81,8 +84,14 @@ def run():
 
         capture(workers)
         begin()
+        matrix.call_method("AdvanceMatrix")
+        assert not matrix.call_method("UseTeacherGroups", args=([True, False],))[-1], "Configure groups before incremental setup starts"
+        matrix.call_method("FailMatrix", args=("fixture_restart",))
+        begin()
         assert not matrix.call_method("UseTeacherGroups", args=([True],))[-1]
-        assert not matrix.call_method("UseTeacherGroups", args=([True, True],))[-1], "Ordinary buildings cannot become grouped schools"
+        assert matrix.call_method("UseTeacherGroups", args=([True, True],))[-1]
+        assert finish(success=False) == [], "Ordinary buildings cannot become grouped schools"
+        begin()
         assert matrix.call_method("UseTeacherGroups", args=([True, False],))[-1]
         assert not matrix.call_method("UseTeacherGroups", args=([False, False],))[-1], "Cannot replace active group semantics"
         scores = finish()
@@ -132,7 +141,9 @@ def run():
         put(components[0], "m_workers", wf)
         capture(workers[:2])
         begin()
-        assert not matrix.call_method("UseTeacherGroups", args=([True, False],))[-1]
+        assert matrix.call_method("UseTeacherGroups", args=([True, False],))[-1]
+        assert finish(success=False) == [], "Protected students forbid group semantics after incremental validation"
+        begin()
         assert matrix.call_method("UseTeacherGroups", args=([False, False],))[-1]
         finish()
         unreal.log("WO_GROUPED_MATRIX_TESTS_PASS: equivalent teacher rows, distinct representative/pupil, original worker opportunity costs, input/late guards and protected-student fallback")

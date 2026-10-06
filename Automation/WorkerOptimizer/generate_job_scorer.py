@@ -24,6 +24,16 @@ for name, kind, array in [(n, "float", False) for n in coefficients] + [
         BP.add_variable(bp, name, kind, container_type=ContainerType.ARRAY if array else None)
 worker_cls = unreal.load_class(None, "/Script/ProjectArco.Prototype_Agent")
 building_cls = unreal.load_class(None, "/Script/ProjectArco.GridActor")
+for kind, names in {"bool": "QualityEnabled QualityActive QualityDone QualitySucceeded", "int": "QualityWorkerIndex QualityStage QualityModifierIndex LastQualityWork", "float": "QualityNeutral QualityCarry QualitySpeed"}.items():
+    for name in names.split():
+        if name not in existing: BP.add_variable(bp, name, kind)
+for name in ("FrozenNeutral", "FrozenCarry", "FrozenSpeed"):
+    if name not in existing: BP.add_variable(bp, name, "float", container_type=ContainerType.ARRAY)
+if "QualityWorkers" not in existing: BP.add_object_variable(bp, "QualityWorkers", worker_cls, container_type=ContainerType.ARRAY)
+if "QualityLookup" not in existing: BP.add_variable(bp, "QualityLookup", "int", container_type=ContainerType.MAP)
+if "QualityWorkerKey" not in existing: BP.add_variable(bp, "QualityWorkerKey", "string")
+for name in ("QualityProductivityModifiers", "QualityAllModifiers"):
+    if name not in existing: BP.add_struct_variable(bp, name, unreal.load_object(None, "/Script/ProjectArco.ModifierPair"), container_type=ContainerType.ARRAY)
 definitions = {
     "ObjectPresent": ([("Object", unreal.Object.static_class())], False),
     "FiniteScore": ([('Value', 'float')], False),
@@ -35,6 +45,13 @@ definitions = {
     "ScoreWorker": ([("Worker", worker_cls), ("Building", building_cls), ("Overtime", "bool")], True),
     "BuilderPreference": ([("Productivity", "float"), ("Carry", "float"), ("Speed", "float")], True),
     "ScoreBuilder": ([("Worker", worker_cls)], True),
+    "ScoreLiveBuilder": ([("Worker", worker_cls)], True),
+    "ReadLiveNeutral": ([("Worker", worker_cls)], True),
+    "BeginQualityCapture": ([("InputWorkers", worker_cls)], False),
+    "AdvanceQualityCapture": ([], False),
+    "FailQualityCapture": ([], False),
+    "ReadFrozenQuality": ([("Worker", worker_cls)], True),
+    "ScoreFrozenData": ([("Worker", worker_cls)] + [(n, 'bool') for n in ("MatchGuild", "MonarchistIndustrial", "ScientistResearch", "Overtime", "Construction")], True),
     "SchoolLearningRateData": ([("TeacherGifted", "bool"), ("StudentInquisitive", "bool"),
         ("GiftedMultiplier", "float"), ("InquisitiveMultiplier", "float")], True),
     "SchoolLearningRate": ([("Teacher", worker_cls), ("Student", worker_cls), ("Building", building_cls)], True),
@@ -49,10 +66,11 @@ for name, (params, scored) in definitions.items():
                 array = kind.endswith("[]")
                 BP.add_function_param(graphs[name], param, kind.removesuffix("[]"), True, ContainerType.ARRAY if array else None)
             else:
-                BP.add_object_function_param(graphs[name], param, kind, True)
+                BP.add_object_function_param(graphs[name], param, kind, True, ContainerType.ARRAY if name == "BeginQualityCapture" else None)
         BP.add_function_param(graphs[name], "Valid" if scored else "Result", "bool", False)
         if scored:
-            BP.add_function_param(graphs[name], "Value", "float", False)
+            for output in (("Neutral", "Carry", "Speed") if name == "ReadFrozenQuality" else ("Value",)):
+                BP.add_function_param(graphs[name], output, "float", False)
 BP.compile_blueprint(bp)
 context = graphs["ScoreWorker"]
 nodes = BP.find_node_types(context, "", [])
@@ -137,6 +155,96 @@ code["ScoreData"] = f"""(fn ScoreData (Neutral MatchGuild MonarchistIndustrial S
     (if (not (CallFunction|FiniteScore :Value {get('Accumulator')})) (return false 0.0))
     (if (< {get('Accumulator')} 10.0) (return true 10.0))
     (return true {get('Accumulator')}))"""
+quality_key = '(Utilities|String|ToString(Integer) ch_ID)'
+quality_worker = at(get('QualityWorkers'), get('QualityWorkerIndex'))
+quality_fail = '(CallFunction|FailQualityCapture) (return false)'
+code["FailQualityCapture"] = f'''(fn FailQualityCapture ()
+    {put('QualityActive', 'false')} {put('QualityDone', 'true')} {put('QualitySucceeded', 'false')}
+    (return false))'''
+code["BeginQualityCapture"] = f'''(fn BeginQualityCapture (InputWorkers)
+    (if {get('QualityActive')} (return false))
+    {put('QualityEnabled', 'true')} {put('QualityDone', 'false')} {put('QualitySucceeded', 'false')}
+    {' '.join(f'(Utilities|Array|Clear {get(name)})' for name in ('QualityWorkers', 'FrozenNeutral', 'FrozenCarry', 'FrozenSpeed', 'QualityProductivityModifiers', 'QualityAllModifiers'))}
+    (Utilities|Map|Clear {get('QualityLookup')})
+    {put('QualityWorkerIndex', '0')} {put('QualityStage', '0')} {put('QualityModifierIndex', '0')} {put('LastQualityWork', '0')}
+    (if (> (Utilities|Array|Length InputWorkers) 10000) {quality_fail})
+    {put('QualityWorkers', 'InputWorkers')} {put('QualityActive', 'true')} (return true))'''
+code["AdvanceQualityCapture"] = f'''(fn AdvanceQualityCapture ()
+    {put('LastQualityWork', '0')}
+    (if (not {get('QualityActive')}) (return false))
+    {put('LastQualityWork', '1')}
+    (switch int {get('QualityStage')}
+      (:0
+        (if (>= {get('QualityWorkerIndex')} (Utilities|Array|Length {get('QualityWorkers')}))
+          {put('QualityActive', 'false')} {put('QualityDone', 'true')} {put('QualitySucceeded', 'true')} (return true))
+        (bind worker {quality_worker})
+        (if (not (CallFunction|ObjectPresent :Object worker)) {quality_fail})
+        {unpack('AgentCharacteristics', '(Class|PrototypeAgent|GetMCharacteristics :self worker)', 'ch')}
+        (if (< ch_ID 0) {quality_fail})
+        {put('QualityWorkerKey', quality_key)}
+        (if (Utilities|Map|Contains {get('QualityLookup')} {get('QualityWorkerKey')}) {quality_fail})
+        (if (not (CallFunction|FiniteScore :Value ch_base_productivity)) {quality_fail})
+        {put('QualityNeutral', 'ch_base_productivity')}
+        {unpack('AgentState', '(Class|PrototypeAgent|GetMState :self worker)', 'state')}
+        {put('QualityCarry', 'state_derived_carryCapacity')} {put('QualitySpeed', 'state_derived_speedPercent')}
+        {put('QualityProductivityModifiers', f'({productivity_node} :Agent worker)')}
+        {put('QualityAllModifiers', '(Class|AgentDetails|GetAgentModifiers :Agent worker :hideMinorMods false)')}
+        (if (or (> (Utilities|Array|Length {get('QualityProductivityModifiers')}) 10000) (> (Utilities|Array|Length {get('QualityAllModifiers')}) 10000)) {quality_fail})
+        {put('QualityModifierIndex', '0')} {put('QualityStage', '1')} (return true))
+      (:1
+        (if (>= {get('QualityModifierIndex')} (Utilities|Array|Length {get('QualityProductivityModifiers')}))
+          {put('QualityModifierIndex', '0')} {put('QualityStage', '2')} (return true))
+        {unpack('ModifierPair', at(get('QualityProductivityModifiers'), get('QualityModifierIndex')), 'p')}
+        {unpack('AgentModifier', 'p_mod', 'm')}
+        (if (not (CallFunction|FiniteScore :Value m_productivityMod)) {quality_fail})
+        (bind isJob (CallFunction|IsWorkplaceModifier :Key p_Key))
+        (if (not isJob) {put('QualityNeutral', f'(+ {get("QualityNeutral")} m_productivityMod)')})
+        {put('QualityModifierIndex', f'(+ {get("QualityModifierIndex")} 1)')} (return true))
+      (:2
+        (if (>= {get('QualityModifierIndex')} (Utilities|Array|Length {get('QualityAllModifiers')}))
+          {put('QualityStage', '3')} (return true))
+        {unpack('ModifierPair', at(get('QualityAllModifiers'), get('QualityModifierIndex')), 'p')}
+        {unpack('AgentModifier', 'p_mod', 'm')}
+        (bind isJob (CallFunction|IsWorkplaceModifier :Key p_Key))
+        (if isJob {put('QualityCarry', f'(- {get("QualityCarry")} m_carryMod)')} {put('QualitySpeed', f'(- {get("QualitySpeed")} m_speedMod)')})
+        {put('QualityModifierIndex', f'(+ {get("QualityModifierIndex")} 1)')} (return true))
+      (:3
+        (if (not (and (CallFunction|FiniteScore :Value {get('QualityNeutral')}) (and (CallFunction|FiniteScore :Value {get('QualityCarry')}) (CallFunction|FiniteScore :Value {get('QualitySpeed')})))) {quality_fail})
+        (Utilities|Array|Add {get('FrozenNeutral')} {get('QualityNeutral')})
+        (Utilities|Array|Add {get('FrozenCarry')} {get('QualityCarry')})
+        (Utilities|Array|Add {get('FrozenSpeed')} {get('QualitySpeed')})
+        (Utilities|Map|Add {get('QualityLookup')} {get('QualityWorkerKey')} {get('QualityWorkerIndex')})
+        {put('QualityWorkerIndex', f'(+ {get("QualityWorkerIndex")} 1)')} {put('QualityStage', '0')} (return true))
+      (:Default {quality_fail})))'''
+code["ReadFrozenQuality"] = f'''(fn ReadFrozenQuality (Worker)
+    (if (not (and {get('QualityEnabled')} (and {get('QualityDone')} {get('QualitySucceeded')}))) (return false 0.0 0.0 0.0))
+    (if (not (CallFunction|ObjectPresent :Object Worker)) (return false 0.0 0.0 0.0))
+    {unpack('AgentCharacteristics', '(Class|PrototypeAgent|GetMCharacteristics :self Worker)', 'ch')}
+    (bind (index found) (Utilities|Map|Find {get('QualityLookup')} {quality_key}))
+    (if (not found) (return false 0.0 0.0 0.0))
+    (if (not (Utilities|Array|IsValidIndex {get('QualityWorkers')} index)) (return false 0.0 0.0 0.0))
+    (if (!= Worker {at(get('QualityWorkers'), 'index')}) (return false 0.0 0.0 0.0))
+    (return true {at(get('FrozenNeutral'), 'index')} {at(get('FrozenCarry'), 'index')} {at(get('FrozenSpeed'), 'index')}))'''
+code["ReadLiveNeutral"] = f'''(fn ReadLiveNeutral (Worker)
+    (if (not (CallFunction|ObjectPresent :Object Worker)) (return false 0.0))
+    {unpack('AgentCharacteristics', '(Class|PrototypeAgent|GetMCharacteristics :self Worker)', 'ch')}
+    (bind modifiers ({productivity_node} :Agent Worker))
+    (Utilities|Array|Clear {get('ScratchKeys')}) (Utilities|Array|Clear {get('ScratchValues')})
+    (for pair modifiers
+      {unpack('ModifierPair', 'pair', 'p')} {unpack('AgentModifier', 'p_mod', 'm')}
+      (Utilities|Array|Add {get('ScratchKeys')} p_Key) (Utilities|Array|Add {get('ScratchValues')} m_productivityMod))
+    (bind (valid neutral) (CallFunction|NeutralProductivity :Base ch_base_productivity :Keys {get('ScratchKeys')} :Values {get('ScratchValues')}))
+    (return valid neutral))'''
+destination_flags = ' '.join(':' + name + ' ' + name for name in ('MatchGuild', 'MonarchistIndustrial', 'ScientistResearch', 'Overtime', 'Construction'))
+code["ScoreFrozenData"] = f'''(fn ScoreFrozenData (Worker MatchGuild MonarchistIndustrial ScientistResearch Overtime Construction)
+    (if {get('QualityEnabled')}
+      (bind (valid neutral carry speed) (CallFunction|ReadFrozenQuality :Worker Worker))
+      (if (not valid) (return false 0.0))
+      (bind (ok score) (CallFunction|ScoreData :Neutral neutral {destination_flags})) (return ok score)
+      (else
+        (bind (valid neutral) (CallFunction|ReadLiveNeutral :Worker Worker))
+        (if (not valid) (return false 0.0))
+        (bind (ok score) (CallFunction|ScoreData :Neutral neutral {destination_flags})) (return ok score))))'''
 code["ScoreWorker"] = f"""(fn ScoreWorker (Worker Building Overtime)
     (if (not {get('Ready')}) (return false 0.0))
     (Utilities|IsValid Worker (:"Is Not Valid" (return false 0.0))
@@ -151,21 +259,11 @@ code["ScoreWorker"] = f"""(fn ScoreWorker (Worker Building Overtime)
             (if (or wf_bDisabled (!= wf_bOvertime Overtime)) (return false 0.0))
             {unpack('GridActorDefinitionMasterSyncFormat', 'definition', 'd')}
             {unpack('AgentCharacteristics', '(Class|PrototypeAgent|GetMCharacteristics :self Worker)', 'ch')}
-            (bind modifiers ({productivity_node} :Agent Worker))
-            (Utilities|Array|Clear {get('ScratchKeys')})
-            (Utilities|Array|Clear {get('ScratchValues')})
-            (for pair modifiers
-              {unpack('ModifierPair', 'pair', 'p')}
-              {unpack('AgentModifier', 'p_mod', 'm')}
-              (Utilities|Array|Add {get('ScratchKeys')} p_Key)
-              (Utilities|Array|Add {get('ScratchValues')} m_productivityMod))
-            (bind (baseOK neutral) (CallFunction|NeutralProductivity :Base ch_base_productivity :Keys {get('ScratchKeys')} :Values {get('ScratchValues')}))
-            (if (not baseOK) (return false 0.0))
             (bind research ({get_component} :self Building :ComponentClass "/Script/ProjectArco.ResearchLab"))
             (bind yard ({get_component} :self Building :ComponentClass "/Script/ProjectArco.ConstructionYard"))
             (bind hasResearch (CallFunction|ObjectPresent :Object research))
             (bind hasYard (CallFunction|ObjectPresent :Object yard))
-            (bind (scoreOK score) (CallFunction|ScoreData :Neutral neutral
+            (bind (scoreOK score) (CallFunction|ScoreFrozenData :Worker Worker
               :MatchGuild (== ch_guild d_guildSpecialty)
               :MonarchistIndustrial (and d_industrialLabor ({set_contains} ch_traits "monarchist"))
               :ScientistResearch (and hasResearch ({set_contains} ch_traits "scientist"))
@@ -177,7 +275,7 @@ code["BuilderPreference"] = f"""(fn BuilderPreference (Productivity Carry Speed)
     (bind value (+ (+ (select (> Productivity 10.0) Productivity 10.0) (* (select (> Carry 0.0) Carry 0.0) 10.0)) (* (select (> Speed 0.0) Speed 0.0) 0.1)))
     (if (not (CallFunction|FiniteScore :Value value)) (return false 0.0))
     (return true value))"""
-code["ScoreBuilder"] = f"""(fn ScoreBuilder (Worker)
+code["ScoreLiveBuilder"] = f"""(fn ScoreLiveBuilder (Worker)
     (if (not (CallFunction|ObjectPresent :Object Worker)) (return false 0.0))
     {unpack('AgentCharacteristics', '(Class|PrototypeAgent|GetMCharacteristics :self Worker)', 'ch')}
     {unpack('AgentState', '(Class|PrototypeAgent|GetMState :self Worker)', 'state')}
@@ -195,6 +293,13 @@ code["ScoreBuilder"] = f"""(fn ScoreBuilder (Worker)
     (if (not ok) (return false 0.0))
     (bind (valid score) (CallFunction|BuilderPreference :Productivity neutral :Carry {get('BuilderCarry')} :Speed {get('BuilderSpeed')}))
     (return valid score))"""
+code["ScoreBuilder"] = f'''(fn ScoreBuilder (Worker)
+    (if (not {get('QualityEnabled')})
+      (bind (valid score) (CallFunction|ScoreLiveBuilder :Worker Worker)) (return valid score))
+    (bind (valid neutral carry speed) (CallFunction|ReadFrozenQuality :Worker Worker))
+    (if (not valid) (return false 0.0))
+    (bind (ok score) (CallFunction|BuilderPreference :Productivity neutral :Carry carry :Speed speed))
+    (return ok score))'''
 code["SchoolLearningRateData"] = f"""(fn SchoolLearningRateData (TeacherGifted StudentInquisitive GiftedMultiplier InquisitiveMultiplier)
     (if (not (and (> GiftedMultiplier 0.0) (<= GiftedMultiplier 1000000.0))) (return false 0.0))
     (if (not (and (> InquisitiveMultiplier 0.0) (<= InquisitiveMultiplier 1000000.0))) (return false 0.0))

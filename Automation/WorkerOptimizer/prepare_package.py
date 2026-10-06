@@ -8,6 +8,10 @@ import unreal
 
 BASE = "/Game/Mods/WorkerOptimizer"
 NAME = "PAL_WorkerOptimizer"
+# Packaging validates the saved native assets; authoring runs separately.
+runpy.run_path(str(Path(__file__).with_name("test_ui_materials.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("generate_ui_frame.py")), run_name="worker_optimizer_frame_preflight")["validate_assets"]()
+unreal.log("WO_UI_MATERIALS_READY")
 registry = unreal.AssetRegistryHelpers.get_asset_registry()
 labels = registry.get_assets_by_class(unreal.TopLevelAssetPath("/Script/Engine", "PrimaryAssetLabel"))
 used = {

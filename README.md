@@ -16,15 +16,25 @@ Automatically assign **Whiskerwood** residents to suitable buildings with **one 
 
 </div>
 
+**Published release: v0.1.1-dev.** Workshop and the download above still provide this version. This repository also contains the **unreleased 0.2.0-local.7 source preview**, whose final in-game test is in progress.
+
 ## At a Glance
 
 - **Match skills to jobs:** assign residents using guild specialties, productivity and eligibility.
 - **Keep construction staffed:** leave a configurable reserve free. Default **1**; **0** disables it.
-- **Cover the basics first:** minimum operating crews before extra workers, subject to the reserve and eligibility.
+- **Cover the basics first:** select feasible minimum crews in priority order, then fill extra positions, subject to the reserve and eligibility.
 - **Set your priorities:** strict or weighted mode, category priorities and building-type overrides.
 - **Leave protected workers alone:** paused and unsupported workplaces are skipped.
 
-**You choose when:** click to auto-assign once. No continuous background reassignment. Building types are discovered from game data; unfamiliar workplace implementations may still need a mod update.
+Building types are discovered from game data; unfamiliar workplace implementations may still need a mod update.
+
+## Source Preview: 0.2.0
+
+- **A redesigned interface:** responsive General, Priorities and Logbook tabs, searchable building priorities and run details.
+- **Your schedule:** run once or enable assignment at day start or every 5, 10 or 15 real-time minutes. Automatic assignment is off by default; paused games wait until resume.
+- **17 game languages:** follows the game's language, with English fallback. See the [language list](docs/GUIDE.md#languages).
+
+One request stays active through at most two automatic replans. The start button stays locked while busy; extra clicks neither cancel nor restart it. These features are **not yet in the published release**. See [preview status and testing](docs/PREVIEW.md).
 
 ## Install
 
@@ -44,16 +54,15 @@ No Python or Unreal Editor needed to play. Use either Workshop or manual install
 
 | Control | Action |
 | :--- | :--- |
-| Arrow button, lower left | Optimize once; click again during a run to cancel further changes |
+| Arrow button, lower left | Optimize once |
 | **Ctrl + Alt + O** | Show/hide controls; rebind through the gear |
-| **Settings > Mods** | Set the free-builder reserve and assignment priorities |
+| Gear | Hotkey settings in v0.1.1-dev; General, Priorities and Logbook tabs in the source preview |
+| **Settings > Mods** | Set the free-builder reserve and assignment priorities in v0.1.1-dev |
 
-Resume the simulation to process assignments. Cancellation does not undo completed changes.
-
-**Languages:** English, German, Polish and French follow the game language. Dutch is prepared, but not selectable in the current game's language menu.
+Resume the simulation to process assignments. In the source preview, use the gear or logbook button to inspect settings and run results.
 
 > [!IMPORTANT]
-> **Development build: use a separate test save.** 30 automated suites pass. Core assignment was live-tested in a small settlement; the 0.1.1 startup/layout repair still needs an in-game test. See [changes](docs/CHANGELOG.md) and [limits](docs/GUIDE.md#verification-and-known-limits).
+> **Development build: use a separate test save.** Automated tests, UI checks and packaging passed on 6 October 2026. The final in-game test of 0.2.0-local.7 is in progress. See [changes](docs/CHANGELOG.md) and [limits](docs/GUIDE.md#verification-and-known-limits).
 
 ---
 

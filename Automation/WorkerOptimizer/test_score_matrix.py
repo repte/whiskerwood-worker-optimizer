@@ -14,6 +14,7 @@ def run():
     cls = load("BP_ScoreMatrix")
     assert cls, "Production runtime score matrix does not exist"
     matrix = unreal.new_object(cls)
+    put(matrix, "StepWorkLimit", 1)
     layout = unreal.new_object(load("BP_ProblemLayout"))
     snapshot = unreal.new_object(load("BP_WorkforceSnapshot"))
     scorer = unreal.new_object(load("BP_JobScorer"))
@@ -59,7 +60,25 @@ def run():
         assert layout.get_editor_property("LayoutSucceeded")
 
     def begin(teachers):
-        return matrix.call_method("BeginMatrix", args=(layout, scorer, settings, settings, teachers))[-1]
+        accepted = matrix.call_method("BeginMatrix", args=(layout, scorer, settings, settings, teachers))[-1]
+        if not accepted:
+            return False
+        for _ in range(1000):
+            if not matrix.get_editor_property("SetupActive"):
+                break
+            matrix.call_method("AdvanceMatrix")
+            assert matrix.get_editor_property("LastStepWork") <= matrix.get_editor_property("StepWorkLimit")
+        assert not matrix.get_editor_property("SetupActive"), "Matrix setup did not complete"
+        return matrix.get_editor_property("MatrixActive")
+
+    def prepare():
+        for _ in range(1000):
+            if matrix.get_editor_property("MatrixDone"):
+                return False
+            if not matrix.get_editor_property("PolicyImported") or matrix.get_editor_property("PolicyIndex") >= len(matrix.get_editor_property("PolicyValues")):
+                break
+            matrix.call_method("AdvanceMatrix")
+        return matrix.call_method("PrepareEdge")
 
     def define(categories):
         for category in categories:
@@ -74,7 +93,7 @@ def run():
                 score = (2.0 if column == 1 else 1.0) if matrix.get_editor_property("SchoolEdge") else 100.0 + column
                 assert matrix.call_method("RecordScore", args=(True, score))
             else:
-                matrix.call_method("PrepareEdge")
+                prepare()
         assert matrix.get_editor_property("MatrixDone")
         assert matrix.get_editor_property("MatrixSucceeded") == success, matrix.get_editor_property("FailureCode")
         return list(matrix.get_editor_property("Scores"))
@@ -141,7 +160,7 @@ def run():
         for bad in (math.nan, math.inf, -1.0, 1000001.0):
             assert begin([-1, 0])
             define(["production", "education"])
-            assert matrix.call_method("PrepareEdge")
+            assert prepare()
             assert matrix.get_editor_property("AwaitingScore")
             assert not matrix.call_method("RecordScore", args=(True, bad))
             assert not matrix.get_editor_property("MatrixSucceeded")
@@ -151,16 +170,22 @@ def run():
         matrix.call_method("AdvanceMatrix")
         assert matrix.get_editor_property("MatrixDone") and not matrix.get_editor_property("MatrixSucceeded")
 
+        for bad in ([-1, 2], [5, 2]):
+            assert begin([-1, 0])
+            assert matrix.call_method("UsePolicy", args=(bad, False))[-1]
+            matrix.call_method("AdvanceMatrix")
+            assert matrix.get_editor_property("MatrixDone") and not matrix.get_editor_property("MatrixSucceeded")
+            assert str(matrix.get_editor_property("FailureCode")) == "invalid_policy"
+            assert not list(matrix.get_editor_property("Scores")), "Invalid policy must fail before scoring"
         assert begin([-1, 0])
-        for bad in ([2], [-1, 2], [5, 2]):
-            assert not matrix.call_method("UsePolicy", args=(bad, False))[-1]
+        assert not matrix.call_method("UsePolicy", args=([2], False))[-1]
         assert matrix.call_method("UsePolicy", args=([4, 0], False))[-1]
         assert matrix.call_method("RecordDefinition", args=("production", True))
         assert not matrix.call_method("UsePolicy", args=([0, 4], True))[-1], "Do not replace policy halfway through definition capture"
         assert matrix.call_method("RecordDefinition", args=("education", True))
         assert list(matrix.get_editor_property("Priorities")) == [4, 0]
         assert not matrix.get_editor_property("Strict")
-        assert matrix.call_method("PrepareEdge")
+        assert prepare()
         assert not matrix.call_method("UsePolicy", args=([0, 4], True))[-1], "Do not change policy while a score is pending"
         finish()
 
@@ -197,7 +222,7 @@ def run():
         assert str(matrix.get_editor_property("FailureCode")) == "incompatible_fixed_student"
         capture([], [], [])
         assert begin([])
-        matrix.call_method("PrepareEdge")
+        prepare()
         assert matrix.get_editor_property("MatrixSucceeded")
         unreal.log("WO_SCORE_MATRIX_TESTS_PASS: runtime layout/eligibility/priority/scorer wiring, hypothetical teachers, fixed columns, school minimum crews, planner integration, invalid observations/reuse and read-only behavior; native definition/score success is an explicit editor observation boundary")
     finally:

@@ -30,6 +30,9 @@ def run():
         ch = person.get_editor_property("m_characteristics")
         assert ch.import_text("(ID=701)")
         put(person, "m_characteristics", ch)
+        state = person.get_editor_property("m_state")
+        put(state, "derived_productivity", 93.0)
+        put(person, "m_state", state)
         building = spawn(native("GridActor"))
         put(building, "ID", 700)
         put(building, "isPlayerOwned", True)
@@ -53,14 +56,20 @@ def run():
 
         capture()
         assert check(), "An unchanged empty target and free worker should pass structural guards"
+        assert str(bridge.get_editor_property("RejectionGuard")) == "None", "Successful validation clears old rejection evidence"
+        put(state, "derived_productivity", 103.0)
+        put(person, "m_state", state)
+        assert check(), "Derived productivity93->103 must not reject an otherwise safe dispatch"
         assert workforce.import_text("(m_workerSlots=((educationRequirement=Master,bIsRequiredToRun=True),()))")
         put(component, "m_workers", workforce)
         capture()
         assert not check(), "Unqualified workers must fail the final action guard, not only planning"
+        assert str(bridge.get_editor_property("RejectionGuard")) == "bridge.hire_role_eligibility"
         assert workforce.import_text("(m_workerSlots=((bIsRequiredToRun=True),()))")
         put(component, "m_workers", workforce)
         capture()
         assert not check(s=1), "Optional slot is locked until every required slot is occupied"
+        assert str(bridge.get_editor_property("RejectionGuard")) == "bridge.optional_before_required"
         for indices in ((-1, 0, 0), (1, 0, 0), (0, -1, 0), (0, 2, 0), (0, 0, -1), (0, 0, 1)):
             assert not check(b=indices[0], s=indices[1], w=indices[2]), indices
         assert not check(snap=None)
@@ -127,9 +136,13 @@ def run():
         assert bridge.get_editor_property("m_activeDetailWidget") == context
         assert not bridge.call_method("IsActorTickEnabled")
         assert not bridge.call_method("QueueAction", args=(snapshot, 0, 1, 0, False)), "Native definition stub cannot authorize a hire in editor"
+        assert str(bridge.get_editor_property("RejectionGuard")) == "bridge.definition_unavailable"
+        assert not bridge.call_method("RejectAction", args=("bridge.later_guard",))
+        assert str(bridge.get_editor_property("RejectionGuard")) == "bridge.definition_unavailable", "First rejection must not be overwritten"
         assert bridge.get_editor_property("QueuedActions") == 0
         assert not bridge.call_method("InitializeBridge", args=(None,))
         assert not bridge.call_method("QueueAction", args=(snapshot, 0, 1, 0, False))
+        assert str(bridge.get_editor_property("RejectionGuard")) == "bridge.not_ready", "New dispatch resets stale rejection evidence"
         unreal.log("WO_ACTION_BRIDGE_TESTS_PASS: snapshot/indices/ownership/pause/availability/occupancy/required-crew guards, private context, disabled tick; no native actions executed")
     finally:
         for obj in reversed(spawned):
