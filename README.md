@@ -10,16 +10,16 @@ Automatically assign **Whiskerwood** residents to suitable buildings with **one 
 
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Tested game version: 0.7.209.0](https://img.shields.io/badge/tested_on-0.7.209.0-2E8B57)
-![Release: v0.2.0](https://img.shields.io/badge/release-v0.2.0-2E8B57)
+![Release: v0.2.1-hotfix.1](https://img.shields.io/badge/release-v0.2.1--hotfix.1-2E8B57)
 
-[Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) · [Download v0.2.0](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0) · [Documentation](docs/GUIDE.md) · [How it works](docs/GUIDE.md#how-it-works)
+[Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) · [Download v0.2.1-hotfix.1](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.1-hotfix.1) · [Documentation](docs/GUIDE.md) · [How it works](docs/GUIDE.md#how-it-works)
 
 </div>
 
-**v0.2.0 is available on Steam Workshop and GitHub.** Subscribe on [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) for automatic updates, or download the release for manual installation.
+**v0.2.1-hotfix.1 is available on Steam Workshop and GitHub.** Subscribe on [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) for automatic updates, or download the release for manual installation.
 
 > [!NOTE]
-> **[Assignment hotfix: v0.2.1-hotfix.1](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.1-hotfix.1)** adds automatic recovery after delayed confirmations and replaces endless loading with a clear failure when confirmation remains unavailable. This is a GitHub pre-release; its in-game test and Workshop submission are pending. [Details and limits](docs/releases/0.2.1-hotfix.1.md).
+> **[Assignment hotfix: v0.2.1-hotfix.1](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.1-hotfix.1)** adds automatic recovery after delayed confirmations and replaces endless loading with a clear failure when confirmation remains unavailable. The Workshop update is live. This remains a GitHub pre-release; its in-game test is pending. [Details and limits](docs/releases/0.2.1-hotfix.1.md).
 
 ## At a Glance
 
@@ -43,7 +43,7 @@ One request stays active through at most two automatic replans. The start button
 
 **Recommended: [Subscribe on Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514).** Wait for Steam to finish downloading, then restart the game. Existing subscribers receive the update through Steam. Remove any separate local `WorkerOptimizer` installation before using the Workshop version.
 
-For manual installation, download **[WorkerOptimizer-v0.2.0.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.2.0/WorkerOptimizer-v0.2.0.zip)** from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0), not the source-code ZIP. Close the game and extract its `WorkerOptimizer` folder into `mods`:
+For manual installation, download **[WorkerOptimizer-v0.2.1-hotfix.1.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.2.1-hotfix.1/WorkerOptimizer-v0.2.1-hotfix.1.zip)** from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.1-hotfix.1), not the source-code ZIP. Close the game and extract its `WorkerOptimizer` folder into `mods`:
 
 ```text
 %LOCALAPPDATA%\Whiskerwood\Saved\mods\WorkerOptimizer\
