@@ -10,13 +10,13 @@ Automatically assign **Whiskerwood** residents to suitable buildings with **one 
 
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
 ![Tested game version: 0.7.209.0](https://img.shields.io/badge/tested_on-0.7.209.0-2E8B57)
-![Status: Development](https://img.shields.io/badge/status-development-D99A20)
+![Release: v0.2.0](https://img.shields.io/badge/release-v0.2.0-2E8B57)
 
-[Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) · [Download](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.1.1-dev) · [Documentation](docs/GUIDE.md) · [How it works](docs/GUIDE.md#how-it-works)
+[Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) · [Download v0.2.0](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0) · [Documentation](docs/GUIDE.md) · [How it works](docs/GUIDE.md#how-it-works)
 
 </div>
 
-**Published release: v0.1.1-dev.** Workshop and the download above still provide this version. This repository also contains the **unreleased 0.2.0-local.7 source preview**, whose final in-game test is in progress.
+**v0.2.0 is available on GitHub.** The final in-game test passed on 6 October 2026. The Workshop update is prepared and awaits manual submission; Workshop still provides **v0.1.1-dev**.
 
 ## At a Glance
 
@@ -28,19 +28,19 @@ Automatically assign **Whiskerwood** residents to suitable buildings with **one 
 
 Building types are discovered from game data; unfamiliar workplace implementations may still need a mod update.
 
-## Source Preview: 0.2.0
+## New in 0.2.0
 
 - **A redesigned interface:** responsive General, Priorities and Logbook tabs, searchable building priorities and run details.
 - **Your schedule:** run once or enable assignment at day start or every 5, 10 or 15 real-time minutes. Automatic assignment is off by default; paused games wait until resume.
 - **17 game languages:** follows the game's language, with English fallback. See the [language list](docs/GUIDE.md#languages).
 
-One request stays active through at most two automatic replans. The start button stays locked while busy; extra clicks neither cancel nor restart it. These features are **not yet in the published release**. See [preview status and testing](docs/PREVIEW.md).
+One request stays active through at most two automatic replans. The start button stays locked while busy; extra clicks neither cancel nor restart it. See [release validation and known limits](docs/PREVIEW.md).
 
 ## Install
 
-Subscribe on [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514), wait for the download, then restart the game. Remove any separate local installation first.
+For **v0.2.0**, use the manual download below until the Workshop update is submitted. The existing [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) subscription currently installs **v0.1.1-dev**.
 
-For manual installation, download **WorkerOptimizer-v0.1.1-dev.zip** from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.1.1-dev), not the source-code ZIP. Close the game and extract its `WorkerOptimizer` folder into `mods`:
+For manual installation, download **[WorkerOptimizer-v0.2.0.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.2.0/WorkerOptimizer-v0.2.0.zip)** from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0), not the source-code ZIP. Close the game and extract its `WorkerOptimizer` folder into `mods`:
 
 ```text
 %LOCALAPPDATA%\Whiskerwood\Saved\mods\WorkerOptimizer\
@@ -56,13 +56,13 @@ No Python or Unreal Editor needed to play. Use either Workshop or manual install
 | :--- | :--- |
 | Arrow button, lower left | Optimize once |
 | **Ctrl + Alt + O** | Show/hide controls; rebind through the gear |
-| Gear | Hotkey settings in v0.1.1-dev; General, Priorities and Logbook tabs in the source preview |
-| **Settings > Mods** | Set the free-builder reserve and assignment priorities in v0.1.1-dev |
+| Gear | Open General, Priorities and Logbook tabs |
+| Logbook button | Inspect run history and results |
 
-Resume the simulation to process assignments. In the source preview, use the gear or logbook button to inspect settings and run results.
+Resume the simulation to process assignments. Use General to set the builder reserve, assignment mode and optional schedule; use Priorities to choose which workplaces matter most.
 
 > [!IMPORTANT]
-> **Development build: use a separate test save.** Automated tests, UI checks and packaging passed on 6 October 2026. The final in-game test of 0.2.0-local.7 is in progress. See [changes](docs/CHANGELOG.md) and [limits](docs/GUIDE.md#verification-and-known-limits).
+> **Try a separate save first.** Automated tests, UI checks, packaging and the final in-game test passed on 6 October 2026. All-language presentation, large settlements and extended sessions still need broader validation. See [changes](docs/CHANGELOG.md) and [limits](docs/GUIDE.md#verification-and-known-limits).
 
 ---
 

@@ -1,7 +1,10 @@
-0.1.1-dev - Startup and adaptive UI repair
-- Added a startup fallback for new colonies or missed load-completion events.
-- Controls adapt to viewport size and DPI; compact layouts move above the bottom toolbar.
-- Hotkey panel stays within the viewport and supports wrapping labels.
-- Assignment rules, builder reserve and hotkey behavior are unchanged.
-- Includes regression and native widget-render tests. In-game validation of this update is pending.
+v0.2.0 - Settings, scheduling and run history
+- Redesigned the interface with responsive General, Priorities and Logbook tabs.
+- Added searchable building priorities, expandable categories and building-type overrides.
+- Added optional runs at day start or every 5, 10 or 15 real-time minutes. Automatic assignment is off by default; paused time counts, and assignments wait until resume.
+- Added persistent run history with assignment changes and reasons for unfilled workplaces.
+- Added translations for all 17 game languages, following the game's language with English fallback.
+- Improved request stability with bounded automatic replanning. The start button stays locked while busy; extra clicks do not cancel or restart the request.
+- Automated checks and the final in-game test passed. Large settlements and presentation in every language still need broader testing.
+
 Documentation and source: https://github.com/repte/whiskerwood-worker-optimizer

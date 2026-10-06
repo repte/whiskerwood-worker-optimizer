@@ -1,7 +1,7 @@
 {
   "Name": "WorkerOptimizer",
-  "Description": "Worker assignment with configurable priorities, builder reserve, optional automatic scheduling and a per-save logbook. Local test build.",
-  "Version": "0.2.0-local.7",
+  "Description": "Auto-assign workers with configurable priorities, builder reserve, optional scheduling and a per-save logbook.",
+  "Version": "0.2.0",
   "CreatedBy": "WorkerOptimizer contributors",
   "EngineVersion": "5.8"
 }

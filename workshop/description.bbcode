@@ -1,19 +1,25 @@
-[h1]Auto-assign workers. One click.[/h1]
-[b]Automatically assign residents to suitable buildings[/b] based on guild specialties and productivity, while keeping workers free for construction. Click whenever you want to rebalance; there is no continuous background reassignment.
+[h1]Worker Optimizer[/h1]
+[b]TL;DR:[/b] Auto-assign workers with one click, or enable a schedule at day start or every 5, 10 or 15 real-time minutes. Keep a builder reserve and choose which workplaces matter most.
+
+Worker Optimizer assigns eligible residents using guild specialties, productivity and your priorities. It plans minimum operating crews before adding extra workers, subject to eligibility and the available workforce.
 
 [list]
-[*][b]Smart staffing:[/b] minimum operating crews before extra workers, subject to eligibility and your reserve.
-[*][b]Builder reserve:[/b] leave 0-100 residents unassigned. Default: 1.
-[*][b]Your priorities:[/b] strict or weighted mode, categories and building-type overrides.
-[*][b]Protected workplaces:[/b] paused and unsupported buildings keep their workers.
+[*][b]General:[/b] set a builder reserve of 0-100 eligible residents (default: 1), choose an assignment mode and configure automatic runs.
+[*][b]Priorities:[/b] search buildings, adjust categories and override individual building types. Choose strict priorities or priority-weighted productivity.
+[*][b]Logbook:[/b] inspect run history, assignment changes and reported reasons for unfilled workplaces.
+[*][b]Protected workers:[/b] workers in paused or unsupported buildings keep their assignments.
+[*][b]17 game languages:[/b] follows the game's language automatically, with English fallback.
 [/list]
 
 [h2]Quick start[/h2]
 Subscribe, let Steam download, then restart the game. Remove any separate local WorkerOptimizer installation first.
-Click the [b]arrow at the lower left[/b] to optimize. [b]Ctrl + Alt + O[/b] toggles visibility; the gear changes the shortcut. Configure staffing under [b]Settings > Mods[/b]. Resume the simulation to process assignments. A second click cancels further changes, not completed assignments.
+Click the [b]arrow at the lower left[/b] to run. The gear opens [b]General, Priorities and Logbook[/b]; the logbook button opens history directly. [b]Ctrl + Alt + O[/b] shows or hides the controls, and the shortcut can be changed in General.
 
-[b]Languages:[/b] EN, DE, PL, FR. Dutch is prepared but not selectable in the current game.
-[b]Development build 0.1.1-dev:[/b] startup and adaptive UI repair for Windows / Whiskerwood 0.7.209.0. In-game validation of this update is pending. Use a test save; large cities and special roles need broader testing.
+Automatic assignment is [b]off by default[/b]. Minute intervals count real time, including pauses. Assignment processing waits until the game resumes; missed intervals do not accumulate into repeated runs.
+
+The start button stays locked while a request is active. Extra clicks do not restart or cancel it. There is no player cancellation or automatic undo of completed assignments.
+
+[b]v0.2.0:[/b] automated checks and the final in-game test passed. Large settlements, complex workplace arrangements and presentation in every language still need broader testing. Try a separate test save before using it in an established settlement.
 
 [h2]Documentation, source and feedback[/h2]
 [url=https://github.com/repte/whiskerwood-worker-optimizer]https://github.com/repte/whiskerwood-worker-optimizer[/url]

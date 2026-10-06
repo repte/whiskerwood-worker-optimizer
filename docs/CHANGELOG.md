@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.2.0 Source Preview (Unreleased)
+## 0.2.0 - 6 October 2026
 
-Current source version: **0.2.0-local.7**, 6 October 2026. Workshop and the published download remain **v0.1.1-dev**. This entry describes source changes, not a new downloadable release. See [preview status and testing](PREVIEW.md).
+First regular [GitHub release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0), available as [WorkerOptimizer-v0.2.0.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.2.0/WorkerOptimizer-v0.2.0.zip). The Workshop update is prepared and awaits manual submission; the Workshop package remains **v0.1.1-dev**. See [release validation](PREVIEW.md).
 
 - Redesigned the native UMG interface with responsive General, Priorities and Logbook tabs, searchable building priorities and expandable categories.
 - Added optional automatic assignment at day start or every 5, 10 or 15 real-time minutes. Automatic assignment defaults to Off. Paused time counts toward minute intervals; due work waits until resume without accumulating missed runs.
@@ -14,11 +14,11 @@ Current source version: **0.2.0-local.7**, 6 October 2026. Workshop and the publ
 - Fixed native logbook selection and category expansion events in local.7, aligned history columns, and improved panel text size and scrolling at reduced game UI scale.
 - Expanded automated coverage for scheduling, history, localization, assignment changes and native UI events; hardened package checks to reject editor helpers and test probes.
 
-Validation on 6 October 2026: the complete automated test run, full cook and package checks passed. Four native UMG frames with synthetic editor data passed interaction and geometry checks and were visually reviewed. The final shipping-game test of **0.2.0-local.7 is in progress**. Large-settlement performance, all-language presentation and broader live workflows remain to be validated.
+Validation on 6 October 2026: the complete automated test run, full cook and package checks passed. Four native UMG frames with synthetic editor data passed interaction and geometry checks and were visually reviewed. The author confirmed the final shipping-game test of **0.2.0-local.7** passed. The release uses the byte-identical tested PAK, with only descriptor version and description metadata changed for **0.2.0**. Large-settlement performance, all-language presentation, extended sessions and broader live workflows still need further validation.
 
 ## 0.1.1-dev
 
-Published Workshop and downloadable release.
+Earlier development release, still the published Workshop version while the 0.2.0 update awaits manual submission.
 
 - Added a startup fallback for new colonies and missed load-completion events. It waits for the game's completed initialization phase and a valid player controller.
 - Made the controls adapt to viewport size and DPI, moving above the bottom toolbar on compact layouts.

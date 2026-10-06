@@ -1,8 +1,17 @@
 # Worker Optimizer: Spieltest
 
-Aktueller Quellcode: **0.2.0-local.7**, noch in abschliessender Spielpruefung.
-Workshop und veroeffentlichter Download bleiben **0.1.1-dev**. Die folgenden
-Punkte gelten fuer die neue Quellcode-Vorschau, nicht fuer die alte Version.
+Aktueller Release: **0.2.0**, verfuegbar auf
+[GitHub](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0)
+als [WorkerOptimizer-v0.2.0.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.2.0/WorkerOptimizer-v0.2.0.zip).
+Der Autor hat den abschliessenden Spieltest von **0.2.0-local.7** am
+**6. Oktober 2026** als bestanden bestaetigt. Der Release verwendet dieselbe
+unveraenderte PAK; nur Version und Beschreibung im separaten Mod-Deskriptor
+wurden angepasst.
+
+Das Workshop-Update ist vorbereitet und wartet auf die manuelle Einreichung.
+Die veroeffentlichte Workshop-Version bleibt bis dahin **0.1.1-dev**.
+Die folgende Checkliste gilt fuer **0.2.0** und kann fuer weitere Spieltests
+verwendet werden; sie behauptet keine vollstaendige Abnahme aller Szenarien.
 
 ## Vorbereitung
 

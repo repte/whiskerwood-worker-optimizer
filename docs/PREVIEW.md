@@ -1,10 +1,12 @@
-# 0.2.0 Source Preview
+# 0.2.0 Release Validation
 
-**Candidate: `0.2.0-local.7` | Updated: 6 October 2026**
+**Release: `0.2.0` | Tested candidate: `0.2.0-local.7` | Updated: 6 October 2026**
 
-This repository contains the upcoming 0.2.0 implementation. The published
-Workshop package and downloadable release are still **0.1.1-dev**. This preview
-does not announce a new binary release. Final in-game testing is in progress.
+The first regular [GitHub release, v0.2.0](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0)
+is available as [WorkerOptimizer-v0.2.0.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.2.0/WorkerOptimizer-v0.2.0.zip).
+The Workshop update is prepared and awaits manual submission; its published
+package remains **0.1.1-dev**. The author confirmed the final in-game test of
+**0.2.0-local.7** passed on 6 October 2026.
 
 ## Included
 
@@ -33,17 +35,19 @@ include reduced game DPI, wide/narrow history layouts, native selection events,
 category expansion and measured text/control bounds. These checks use editor
 fixtures, not a replacement for in-game acceptance.
 
-The local candidate package contains 46 assets / 92 package entries.
-Its SHA256 is:
+The release PAK is byte-identical to the tested **0.2.0-local.7** PAK and contains
+46 assets / 92 package entries. Only the separate descriptor's version and
+description metadata changed for the **0.2.0** release; the PAK was not rebuilt.
+The PAK SHA256 is:
 
 ```text
 A2A90735D8018AA36DF5E1448284B12EBA4F5C0166939316300E7F86B2A6B5FD
 ```
 
-Final in-game UI verification, all-language review, long sessions and large
-settlement performance are not signed off. Previous small-settlement tests do
-not establish those results for this candidate. Frame budgets are not a
-guarantee of stutter-free gameplay.
+The author's final shipping-game test passed on 6 October 2026. This acceptance
+does not establish comprehensive all-language review, long-session coverage or
+large-settlement performance. Those areas still need broader manual validation.
+Frame budgets are not a guarantee of stutter-free gameplay.
 
 ## Quick In-Game Check
 

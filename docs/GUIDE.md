@@ -8,7 +8,7 @@ Assign residents to suitable workplaces with one click, while keeping a configur
 
 Worker Optimizer matches residents to jobs using guild specialties, productivity and job eligibility. It selects feasible minimum operating crews in priority order before filling additional positions, with category priorities and building-type overrides to control where workers are needed most.
 
-**Version scope:** this guide describes the **unreleased 0.2.0-local.7 source preview**, except where the published version is named. Workshop and the downloadable release remain **v0.1.1-dev**. The redesigned interface, scheduling and logbook described below are not yet published.
+**Version scope:** this guide describes **v0.2.0**, available from [GitHub Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0). The Workshop update is prepared and awaits manual submission; the published Workshop package remains **v0.1.1-dev**.
 
 ## Features
 
@@ -27,15 +27,15 @@ Worker Optimizer matches residents to jobs using guild specialties, productivity
 
 ## Status
 
-The published **v0.1.1-dev** is available on [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) and [GitHub Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.1.1-dev). Built for **Whiskerwood 0.7.209.0 for Windows**.
+The first regular release, **v0.2.0**, is available on [GitHub Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0). Built for **Whiskerwood 0.7.209.0 for Windows**. The [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) update awaits manual submission.
 
-On **6 October 2026**, source preview **0.2.0-local.7** passed the full automated test run, full cook and package checks. Four native UMG frames with synthetic editor data passed the UI checks. Its final test in the shipping game is in progress; these results do not constitute complete in-game acceptance. See [preview status and testing](PREVIEW.md). Larger settlements, complex school arrangements and interactions with other mods need further testing. Use a separate test save before trying it in an established settlement.
+On **6 October 2026**, candidate **0.2.0-local.7** passed the full automated test run, full cook and package checks. Four native UMG frames with synthetic editor data passed the UI checks. The author also confirmed that the final test in the shipping game passed. The v0.2.0 release uses that exact tested PAK; only descriptor version and description metadata changed. See [release validation](PREVIEW.md). Larger settlements, complex school arrangements and interactions with other mods need further testing. Use a separate test save before trying it in an established settlement.
 
 ## Installation
 
-For Workshop installation, subscribe, wait for Steam to download and restart the game. Remove any separate local WorkerOptimizer installation first.
+The existing Workshop subscription currently installs **v0.1.1-dev**. The **v0.2.0** Workshop update is prepared and awaits manual submission. For Workshop installation, subscribe, wait for Steam to download and restart the game. Remove any separate local WorkerOptimizer installation first.
 
-For manual installation, download `WorkerOptimizer-v0.1.1-dev.zip` from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.1.1-dev), not the source-code ZIP. Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
+For manual installation of **v0.2.0**, download [WorkerOptimizer-v0.2.0.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.2.0/WorkerOptimizer-v0.2.0.zip) from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.2.0), not the source-code ZIP. Use either Workshop or a local installation, never both. Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
 
 ```text
 %LOCALAPPDATA%\Whiskerwood\Saved\mods\WorkerOptimizer\
@@ -49,13 +49,13 @@ The packaged mod does not require Python, Unreal Editor or the development tools
 
 ## Usage
 
-Click the arrow button to run the optimizer. In the source preview the button stays locked and displays a busy indicator until the request finishes. Extra clicks do not restart or cancel it; settings, logbook and visibility controls remain available.
+Click the arrow button to run the optimizer. The button stays locked and displays a busy indicator until the request finishes. Extra clicks do not restart or cancel it; settings, logbook and visibility controls remain available.
 
-The source preview captures scoring values once per plan. Ordinary speed/productivity fluctuations do not abort the request. Relevant workplace or eligibility changes can trigger at most two automatic replans under the same frozen settings and logbook entry. Confirmed changes are retained, and a pending native command must be observed before replanning. An unconfirmed command keeps the start button locked to prevent overlapping changes; loading another world ends the old session. There is no player cancellation or automatic rollback of confirmed changes.
+The optimizer captures scoring values once per plan. Ordinary speed/productivity fluctuations do not abort the request. Relevant workplace or eligibility changes can trigger at most two automatic replans under the same frozen settings and logbook entry. Confirmed changes are retained, and a pending native command must be observed before replanning. An unconfirmed command keeps the start button locked to prevent overlapping changes; loading another world ends the old session. There is no player cancellation or automatic rollback of confirmed changes.
 
-**Ctrl + Alt + O** hides or shows the controls without changing assignments. In the source preview, the adjacent gear opens **General**, **Priorities** and **Logbook**. General contains the reserve, assignment mode, automatic schedule and visibility shortcut. Priorities provides building search, expandable categories and building-type overrides. The logbook button opens run history directly.
+**Ctrl + Alt + O** hides or shows the controls without changing assignments. The adjacent gear opens **General**, **Priorities** and **Logbook**. General contains the reserve, assignment mode, automatic schedule and visibility shortcut. Priorities provides building search, expandable categories and building-type overrides. The logbook button opens run history directly.
 
-In published **v0.1.1-dev**, the gear changes the visibility shortcut and assignment preferences are in the game's **Settings > Mods** menu. That release runs on demand and does not include the new tabbed panel, automatic schedule or logbook.
+In the older **v0.1.1-dev** Workshop package, the gear changes the visibility shortcut and assignment preferences are in the game's **Settings > Mods** menu. That release runs on demand and does not include the new tabbed panel, automatic schedule or logbook.
 
 | Setting | Behavior |
 | --- | --- |
@@ -84,7 +84,7 @@ History is stored separately from the game save. Different save names or autosav
 
 ### Languages
 
-The source preview follows the game language and includes all 17 game-language entries:
+The mod follows the game language and includes all 17 game-language entries:
 
 English, French, German, Italian, Spanish, Russian, Japanese, Simplified Chinese, Korean, Turkish, Brazilian Portuguese, Polish, Ukrainian, Czech, Hungarian, Traditional Chinese and Latin American Spanish.
 
@@ -108,7 +108,7 @@ Planning advances incrementally across ticks. A map-load session owns the contro
 
 Startup listens for the native load-completion event and also checks `ProjectArcoGameModeBase.CurrentInitPhase`. Once the phase is `DONE` and a player controller exists, a missing event no longer prevents session creation. The fallback is checked at half-second intervals and stops once the session is ready; it never triggers optimization.
 
-The controls and panel adapt to viewport size and the game's UI scale. The source preview uses a narrow layout where needed, scrollable content and a minimum readable panel text size when the game reduces UI scale. Larger game scales remain respected. Resolution and DPI changes update the open panel. Other mods' overlays are not automatically detected.
+The controls and panel adapt to viewport size and the game's UI scale. The panel uses a narrow layout where needed, scrollable content and a minimum readable panel text size when the game reduces UI scale. Larger game scales remain respected. Resolution and DPI changes update the open panel. Other mods' overlays are not automatically detected.
 
 ### Update Compatibility
 
@@ -157,9 +157,9 @@ Only the `.pak` and `.uplugin` files in that folder are installation inputs. The
 
 ## Verification and Known Limits
 
-The complete automated test run, full cook and package checks passed for **0.2.0-local.7 on 6 October 2026**. Coverage includes assignment planning, fixed and flexible minimum crews, priorities, protected workers, reserves, language catalogs, settings, schedules, logbook behavior, lifecycle, action confirmation and the redesigned UI. Package checks confirmed 46 runtime assets and excluded editor helpers and test probes.
+The complete automated test run, full cook and package checks passed for **0.2.0-local.7 on 6 October 2026**. Its final in-game test was confirmed green by the author on the same date. The **v0.2.0** release PAK is byte-identical to that tested candidate; only descriptor version and description metadata changed. Coverage includes assignment planning, fixed and flexible minimum crews, priorities, protected workers, reserves, language catalogs, settings, schedules, logbook behavior, lifecycle, action confirmation and the redesigned UI. Package checks confirmed 46 runtime assets and excluded editor helpers and test probes. See the [release PAK checksum](PREVIEW.md#verification).
 
-Four native UMG frames using synthetic editor data cover wide history at 1920x1080 and reduced DPI, plus narrow history, priorities and general settings at 1280x720 and reduced DPI. Native event checks exercise history selection and category expansion; geometry checks cover columns, text, scrolling and panel bounds. These checks do not constitute shipping-game acceptance. The final in-game test of local.7 is in progress. Editor tests cannot prove all native game behavior because the modkit contains native-function stubs.
+Four native UMG frames using synthetic editor data cover wide history at 1920x1080 and reduced DPI, plus narrow history, priorities and general settings at 1280x720 and reduced DPI. Native event checks exercise history selection and category expansion; geometry checks cover columns, text, scrolling and panel bounds. These editor checks are separate from the author's final in-game confirmation. Editor tests cannot prove all native game behavior because the modkit contains native-function stubs.
 
 Live testing on 5 October 2026 confirmed:
 
@@ -170,7 +170,7 @@ Live testing on 5 October 2026 confirmed:
 
 Remaining limits include large-city performance, complex school configurations, special bonus-slot production effects, live priority trade-offs and workplace changes during queued actions. Exact school search can become expensive as the number of distinct teacher choices grows.
 
-Earlier 0.2.0 previews completed assignment runs and showed persisted history in the shipping game. They do not establish acceptance of the current UI repairs. Scheduling intervals, extended sessions, all 17 languages, save-slot history edge cases and full keyboard/gamepad operation still need broader manual validation.
+Earlier 0.2.0 previews completed assignment runs and showed persisted history in the shipping game. The final release candidate passed the author's in-game test on 6 October 2026. This confirmation does not establish comprehensive coverage of scheduling intervals, extended sessions, all 17 languages, save-slot history edge cases or full keyboard/gamepad operation; those areas still need broader manual validation.
 
 Incremental work, cached views and reused list rows reduce per-frame work, but the time budget is not a hard frame-time guarantee. Smooth performance in large settlements remains unverified.
 
