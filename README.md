@@ -52,6 +52,9 @@ No Python or Unreal Editor needed to play. Use either Workshop or manual install
 
 ## Play
 
+> [!WARNING]
+> For best results, run worker assignment calculations at night or just after a new day starts. Running them during the day may cause assignment errors.
+
 | Control | Action |
 | :--- | :--- |
 | Arrow button, lower left | Optimize once |
