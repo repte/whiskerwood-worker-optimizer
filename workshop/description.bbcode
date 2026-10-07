@@ -9,7 +9,7 @@ Match your residents' specialties to your settlement's workplaces. Worker Optimi
 [*][b]Better job matches:[/b] considers guild specialties, productivity and job requirements.
 [*][b]Minimum crews first:[/b] fill feasible minimum crews before adding suitable workers to extra positions.
 [*][b]Construction reserve:[/b] keep residents available for building, using your saved reserve or 1 resident by default.
-[*][b]Respect paused buildings:[/b] preserve their existing worker assignments.
+[*][b]Preserve protected workers:[/b] leave paused buildings and unsupported warehouse workplaces unchanged.
 [/list]
 
 [h2]Getting started[/h2]
@@ -20,7 +20,9 @@ Click the lower-left assignment icon. It shows when assignment is running and be
 [b]Recommended timing:[/b] Run assignment at night or just after a new day starts. Running it during the day may cause assignment errors.
 
 [h2]Preview information[/h2]
-[b]v0.3.0-preview[/b] targets Whiskerwood 0.7.209.0 on Windows. [b]In-game validation is pending.[/b] Try a separate save first. Assignment covers supported active workplaces; available workers, the construction reserve and job requirements determine which buildings can be staffed.
+[b]v0.3.1-preview[/b] targets Whiskerwood 0.7.209.0 on Windows. [b]In-game validation is pending.[/b] Try a separate save first. Assignment covers supported active workplaces; available workers, the construction reserve and job requirements determine which buildings can be staffed.
+
+This update skips unsupported warehouse workplaces while keeping their existing workers. It addresses a rejected assignment that could stop a run at those buildings.
 
 [h2]Source, documentation and feedback[/h2]
 [url=https://github.com/repte/whiskerwood-worker-optimizer]https://github.com/repte/whiskerwood-worker-optimizer[/url]

@@ -1,11 +1,12 @@
 # Worker Optimizer: lokaler Spieltest
 
-Version: **0.3.0-preview**. Die Mod zeigt nur noch ein Symbol fuer manuelle Zuweisung. **Die Abnahme im echten Spiel steht aus und wird vom Benutzer durchgefuehrt.**
+Version: **0.3.1-preview**. Die Mod zeigt nur noch ein Symbol fuer manuelle Zuweisung. **Die Abnahme im echten Spiel steht aus und wird vom Benutzer durchgefuehrt.**
 
-Automatisierte Tests, Windows-Build und Paketpruefung dieser Version sind am 7. Oktober 2026 erfolgreich abgeschlossen worden; siehe [Pruefnachweis](verification/2026-10-07-manual-core.md). Fruehere erfolgreiche Spieltests bestaetigen weder die vereinfachte Bedienung noch den geaenderten nativen Zuweisungspfad. Es gibt keine Zusage, dass jeder Spielbefehl erfolgreich ausgefuehrt wird.
+Gezielte Arbeitsplatztests, die vollstaendige automatisierte Editor-Suite, Windows-Cook und Paketpruefungen des finalen Pakets 0.3.1-preview sind am 7. Oktober 2026 erfolgreich abgeschlossen worden; siehe [Pruefnachweis zur nativen Arbeitsplatzfaehigkeit](verification/2026-10-07-native-workplace-capability.md). Die temporaere Diagnoseerweiterung ist nicht enthalten. Fruehere erfolgreiche Spieltests ersetzen diese Spielabnahme nicht. Es gibt keine Zusage, dass jeder Spielbefehl erfolgreich ausgefuehrt wird.
 
 ## Was sich aendert
 
+- Neu in 0.3.1-preview: Die native ResourceBuilding-Familie, einschliesslich GranaryResourceBuilding (Prefab `tinywarehouse`), wird nicht mehr eingeplant, da ihre native Zuweisungsschnittstelle keine veraenderbare Belegschaft liefert. Vorhandene Arbeiter bleiben geschuetzt. Damit wird dieser konkrete abgelehnte Einstellungsversuch vermieden; andere Fehler sind dadurch nicht ausgeschlossen.
 - Nur das manuelle Zuweisungssymbol ist erreichbar. Zahnrad, Logbuch und bisherige Einstellungsfenster sind nicht zugaenglich.
 - Das Symbol bleibt sichtbar. Der bisherige Sichtbarkeits-Hotkey und gespeicherte Belegungen sind deaktiviert.
 - Die bisherige Einstellungs- und Logbuchimplementierung bleibt im Quellcode und in den Assets erhalten. Gespeicherte Einstellungen und Historien werden nicht geloescht.
@@ -18,9 +19,18 @@ Automatisierte Tests, Windows-Build und Paketpruefung dieser Version sind am 7. 
 ## Vorbereitung
 
 1. Einen separaten Testspielstand verwenden und die bisherige Reserve notieren, soweit bekannt.
-2. Das Paket mit Versionsangabe 0.3.0-preview verwenden. Lokale Mod und Workshop-Kopie nicht gleichzeitig laden.
+2. Das Paket mit Versionsangabe 0.3.1-preview verwenden. Lokale Mod und Workshop-Kopie nicht gleichzeitig laden.
 3. Einen Spielstand mit alten Zeitplan-, Prioritaets- und Moduseinstellungen in den Test einschliessen.
 4. Fuer den ersten Zuweisungstest die Nacht oder den Beginn eines neuen Tages verwenden. Verhalten waehrend des Tages danach gesondert pruefen.
+
+## Lagerhaus-Schutz gezielt pruefen
+
+1. Einen Testspielstand mit einer betroffenen Lagerhaus-Arbeitsstaette (Prefab `tinywarehouse`) und mindestens einer unterstuetzten benachbarten Arbeitsstaette laden. Vorhandene Arbeiter und ihre Plaetze vorher notieren oder abbilden.
+2. Die manuelle Zuweisung einmal starten. Nach Auftragsende muessen dieselben Arbeiter auf ihren Plaetzen in der betroffenen Lagerhaus-Arbeitsstaette bleiben; sie duerfen nicht anderswo zugewiesen oder als freie Bauarbeiterreserve behandelt werden. Eine solche leere Arbeitsstaette darf durch diesen Lauf keine neue Zuweisung erhalten.
+3. Die unterstuetzte Arbeitsstaette bleibt Teil der Planung. Ihre tatsaechlichen Aenderungen gegen Eignung und Reserve pruefen; unveraenderte Belegung allein ist kein Fehler, wenn kein passender Wechsel noetig ist.
+4. Bei einem Abbruch Tooltip und Log pruefen. Der bisherige abgelehnte Einstellungsversuch fuer `tinywarehouse` soll nicht mehr auftreten; andere Fehler getrennt festhalten. Ein abgeschlossener Aktivitaetszustand allein bestaetigt keinen erfolgreichen Lauf.
+
+Der [native Pruefnachweis](verification/2026-10-07-native-workplace-capability.md) begruendet diese Schutzregel; er ersetzt die Beobachtung im Spiel nicht.
 
 ## Kurz pruefen
 

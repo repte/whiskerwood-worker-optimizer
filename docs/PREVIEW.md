@@ -1,4 +1,31 @@
-# 0.2.0 Release Validation
+# Preview Validation
+
+**Current preview: v0.3.1-preview | Target: Whiskerwood 0.7.209.0 on Windows | Updated: 7 October 2026**
+
+**In-game acceptance is pending and will be performed by the user.** The Workshop update is prepared, not submitted. See the [current release notes](releases/v0.3.1-preview.md).
+
+## Current Change
+
+The native `ResourceBuilding` family, including `GranaryResourceBuilding` used by prefab `tinywarehouse`, is excluded from assignment planning because its native API exposes no mutable workforce. Existing occupants remain protected and cannot be moved to other jobs or counted as free builders. This avoids the specific rejected hire that could stop a run at those workplaces; it does not establish that every live assignment will succeed.
+
+One-click assignment, feasible minimum crews before extra staffing, and the saved construction reserve remain unchanged.
+
+## Current Verification
+
+Targeted workplace regressions, the full automated editor suite, Windows cook and package checks passed for the final v0.3.1-preview package on 7 October 2026. The [native workplace capability record](verification/2026-10-07-native-workplace-capability.md) documents the inspected game behavior and exact build evidence. Temporary diagnostic instrumentation is not included.
+
+These checks do not replace shipping-game acceptance. Use a separate save and only one installed copy of the mod. Prefer night or just after day start; daytime assignment may cause errors.
+
+1. Record an affected warehouse workplace's existing workers and slots, run assignment once, and confirm its occupants remain unchanged.
+2. Confirm supported neighboring workplaces still participate, subject to worker eligibility and the saved construction reserve.
+3. Compare actual assignments, minimum crews and free residents before and after; a finished busy indicator alone does not prove success.
+4. Report any failed run with the tooltip, relevant log entries and before/after observations.
+
+See the [local game-test checklist](LOCAL_TEST.md) for the detailed acceptance checks.
+
+## Historical: 0.2.0 Release Validation
+
+The following record is retained for the older release. Its features, Workshop status and game acceptance do not describe v0.3.1-preview.
 
 **Release: `0.2.0` | Tested candidate: `0.2.0-local.7` | Updated: 6 October 2026**
 
@@ -8,7 +35,7 @@ The Workshop update is prepared and awaits manual submission; its published
 package remains **0.1.1-dev**. The author confirmed the final in-game test of
 **0.2.0-local.7** passed on 6 October 2026.
 
-## Included
+### Included
 
 - Responsive settings with General, Priorities and Logbook tabs.
 - Searchable building categories, expandable rows and per-type priority overrides.
@@ -27,7 +54,7 @@ Both assignment modes aim to fill minimum operating crews before extra slots.
 Builder reserve, worker eligibility and required crew sizes remain binding.
 Buildings can remain unstaffed when there are not enough eligible workers.
 
-## Verification
+### Verification
 
 The full automated Blueprint suite, native UMG render/interaction checks, full
 package build and package validation passed on 6 October 2026. The UI checks
@@ -49,7 +76,7 @@ does not establish comprehensive all-language review, long-session coverage or
 large-settlement performance. Those areas still need broader manual validation.
 Frame budgets are not a guarantee of stutter-free gameplay.
 
-## Quick In-Game Check
+### Quick In-Game Check
 
 Use a separate test save and only one installed copy of the mod.
 

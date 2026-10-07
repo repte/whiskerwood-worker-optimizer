@@ -58,10 +58,15 @@ with toolset_registry.tool_raising_exceptions():
           (:CastFailed {chain}))
         """
     BP.write_graph_dsl(component_graph, f"(fn ReadComponent (component) {chain})")
+    # In 0.7.209.0 ResourceBuilding (including GranaryResourceBuilding) exposes
+    # legacy m_workers but its native AgentEnterable assignment getter returns null.
+    # Keep ReadComponent intact so occupants remain protected by the snapshot.
     code = f"""
     (fn ReadWorkplace (Building)
       (Utilities|IsValid :InputObject Building
         (:"Is Valid"
+          (bind unsupported ({all_components} :self Building :ComponentClass "/Script/ProjectArco.ResourceBuilding"))
+          (if (> (Utilities|Array|Length unsupported) 0) (return false))
           (Variables|Default|SetFoundCount 0)
           (bind components ({all_components} :self Building :ComponentClass "/Script/Engine.ActorComponent"))
           (for component components
@@ -80,7 +85,13 @@ with toolset_registry.tool_raising_exceptions():
     assert unreal.EditorAssetLibrary.save_loaded_asset(bp)
     Path(unreal.Paths.project_saved_dir(), "WorkerOptimizer-Workplace.dsl").write_text(code, encoding="utf-8")
     Path(unreal.Paths.project_dir(), "Docs/WorkerOptimizer/WORKPLACE-COMPATIBILITY.json").write_text(
-        json.dumps({"game_version": "0.7.209.0", "component_classes": [p for p, _, _ in component_nodes]}, indent=2), encoding="utf-8"
+        json.dumps({
+            "game_version": "0.7.209.0",
+            "component_classes": [p for p, _, _ in component_nodes],
+            "non_assignable_component_families": {
+                "/Script/ProjectArco.ResourceBuilding": "Native AgentEnterable assignment getter returns null; readable occupants are protected."
+            },
+        }, indent=2), encoding="utf-8"
     )
 unreal.log(f"WO_WORKPLACE_GENERATED: {len(component_nodes)} reflected component types, no building list")
 exec(Path(__file__).with_name("test_workplace.py").read_text(encoding="utf-8"))

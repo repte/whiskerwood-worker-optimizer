@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1-preview - 7 October 2026
+
+Workplace compatibility preview. In-game acceptance is pending; Workshop files are prepared, not submitted.
+
+- Exclude the native `ResourceBuilding` family, including `GranaryResourceBuilding` used by prefab `tinywarehouse`, because its native assignment API exposes no mutable workforce.
+- Preserve existing occupants of excluded workplaces and keep them out of reassignment and construction-reserve calculations.
+- Avoid the specific rejected hire that could stop an assignment run at these workplaces. Other assignment failures remain possible.
+- Retain one-click assignment, feasible minimum crews before best-fit extra staffing, and the saved construction reserve.
+- Pass targeted workplace regressions, the full automated editor suite, Windows cook and package checks for the fix. Shipping-game acceptance remains separate.
+
+See [preview notes](releases/v0.3.1-preview.md) and the [native workplace capability verification](verification/2026-10-07-native-workplace-capability.md).
+
 ## 0.3.0-preview - 7 October 2026
 
 Single-icon preview. In-game validation is pending and will be performed by the user. Workshop files are prepared separately; no Workshop submission is included in this release workflow.

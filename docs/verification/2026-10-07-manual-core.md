@@ -34,11 +34,15 @@ use binary addresses, patches, or a replacement native assignment implementation
 - The education check is `(education & requirement) == requirement`, matching
   `ArcoFunctionLibrary.CheckEducation`. Selector-only `ApprenticeOnly` and
   `SailorOnly` filtering is not an alternative admission rule for this action.
-- All **40 hire/fire implementation pointers across the 20 supported native
+- All **40 hire/fire implementation pointers across the 20 reflected native
   workplace components** matched the installed executable. Their implementations
   use the shared immediate slot writer/clearer, wrappers around those methods,
   or School's equivalent immediate writer/clearer. No deferred slot-mutation
-  branch was found in this supported set.
+  branch was found in this inspected set. **This pointer check alone did not
+  establish workforce capability.** Later inspection proved that
+  `ResourceBuilding` and `GranaryResourceBuilding` return no native mutable
+  workforce despite exposing `m_workers`; see the
+  [native capability correction](2026-10-07-native-workplace-capability.md).
 - The native `newEmployer` handler sets the worker's workplace synchronously;
   `lostEmployer` clears it synchronously. `Prototype_Agent.GetWorkplace` reads
   that workplace reference. The slot and worker-side workplace can therefore be

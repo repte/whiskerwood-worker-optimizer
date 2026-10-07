@@ -8,7 +8,7 @@ Assign residents to suitable workplaces with one manual icon, while respecting t
 
 Worker Optimizer matches residents to jobs using guild specialties, productivity and job eligibility. It selects feasible minimum operating crews before filling additional positions by suitability. Active supported workplaces have equal priority in this preview.
 
-**Version scope:** this guide describes **v0.3.0-preview**. The user will perform the in-game test; acceptance is pending. GitHub publication and preparing Workshop files are separate from submitting an update to Steam. Historical validation for earlier releases does not validate this preview.
+**Version scope:** this guide describes **v0.3.1-preview**. The user will perform the in-game test; acceptance is pending. GitHub publication and preparing Workshop files are separate from submitting an update to Steam. Historical validation for earlier releases does not validate this preview.
 
 ## Features
 
@@ -26,15 +26,15 @@ Worker Optimizer matches residents to jobs using guild specialties, productivity
 
 ## Status
 
-The target is **Whiskerwood 0.7.209.0 for Windows**. The [v0.3.0-preview release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.0-preview) contains the preview package and its current verification record. The [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) receives this version only after a separate manual submission.
+The target is **Whiskerwood 0.7.209.0 for Windows**. The [v0.3.1-preview release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.1-preview) contains the preview package and its current verification record. The [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) receives this version only after a separate manual submission.
 
-**In-game validation is pending and belongs to the user.** The changed native assignment request path must be tested in the shipping game. Editor tests use native-function stubs and cannot establish that game-side commands succeed. Use a separate test save. See [preview notes](releases/v0.3.0-preview.md).
+**In-game validation is pending and belongs to the user.** This preview skips unsupported warehouse workplaces whose native API does not expose a mutable workforce and protects their existing workers. The fix must still be tested in the shipping game. Editor tests use native-function stubs and cannot establish that game-side commands succeed. Use a separate test save. See [preview notes](releases/v0.3.1-preview.md).
 
 ## Installation
 
-For Workshop installation, subscribe, wait for Steam to download and restart the game. The prepared v0.3.0-preview upload is not a live Workshop update until manually submitted. To test this preview before submission, use its GitHub package and avoid loading the Workshop copy at the same time.
+For Workshop installation, subscribe, wait for Steam to download and restart the game. The prepared v0.3.1-preview upload is not a live Workshop update until manually submitted. To test this preview before submission, use its GitHub package and avoid loading the Workshop copy at the same time.
 
-For manual installation, download [WorkerOptimizer-v0.3.0-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.0-preview/WorkerOptimizer-v0.3.0-preview.zip) from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.0-preview), not the source-code ZIP. Use either Workshop or a local installation, never both. Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
+For manual installation, download [WorkerOptimizer-v0.3.1-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.1-preview/WorkerOptimizer-v0.3.1-preview.zip) from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.1-preview), not the source-code ZIP. Use either Workshop or a local installation, never both. Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
 
 ```text
 %LOCALAPPDATA%\Whiskerwood\Saved\mods\WorkerOptimizer\
@@ -49,6 +49,8 @@ The packaged mod does not require Python, Unreal Editor or the development tools
 ## Usage
 
 Click the assignment icon to run the optimizer. The icon displays a busy indicator until the request completes. Extra clicks do not restart or cancel it. No settings or logbook views are accessible.
+
+**Recommended timing:** run assignment at night or just after a new day starts. Running it during the day may cause assignment errors; this compatibility fix does not remove that recommendation.
 
 The optimizer captures scoring values once per plan. Ordinary speed/productivity fluctuations do not abort the request. Relevant workplace or eligibility changes can trigger bounded automatic replanning within the same manual request; this is not a scheduled run. The supported native calls update their assignment state before returning, so the result is checked immediately. Only observed effects count as confirmed changes. There is no player cancellation or automatic rollback of confirmed changes.
 
@@ -112,6 +114,8 @@ Building types, guild specialties and slot layouts come from game data. New buil
 
 The workplace adapter and native action bridge are version-sensitive. A new component implementation or changed game API may still require an update. Unknown workplaces are preserved rather than assigned using guessed rules. Newly discovered supported types use the same priority as other active supported buildings.
 
+In **v0.3.1-preview**, the native `ResourceBuilding` family is excluded from planning, including `GranaryResourceBuilding` used by prefab `tinywarehouse`. In the inspected game version, its native assignment API returns no mutable workforce, so a planned hire could stop the request. Existing occupants remain protected: they are neither reassigned elsewhere nor counted toward the free construction reserve. This addresses that specific rejected-hire path, not every possible assignment failure. See the [native workplace capability verification](verification/2026-10-07-native-workplace-capability.md).
+
 ### Source Layout
 
 ```text
@@ -153,11 +157,11 @@ Only the `.pak` and `.uplugin` files in that folder are installation inputs. The
 
 ## Verification and Known Limits
 
-**Current preview: in-game validation is pending.** The user will test **0.3.0-preview**. Its native assignment changes must be checked against the real game; neither editor fixtures nor successful package checks prove that live assignments succeed. See [preview notes](releases/v0.3.0-preview.md) for the current verification status.
+**Current preview: in-game validation is pending.** The user will test **0.3.1-preview**. Its workplace exclusion and occupant protection must be checked against the real game; neither editor fixtures nor successful package checks prove that live assignments succeed. See [preview notes](releases/v0.3.1-preview.md) for the current verification status.
 
-The full automated suite, Windows cook and 46-asset package verification passed on 7 October 2026 (CEST). The exact build and PAK checksum are recorded in the [verification report](verification/2026-10-07-manual-core.md).
+The focused workplace tests, full automated editor suite, Windows cook and package checks passed for this fix on 7 October 2026 (CEST). The [native workplace capability verification](verification/2026-10-07-native-workplace-capability.md) records those checks and their tested build. The final v0.3.1-preview delivery is packaged separately with updated external version metadata.
 
-Acceptance should cover the single visible icon, inaccessible legacy panels, old saved schedules staying inactive, equal treatment despite old priority/mode preferences, the preserved builder reserve, minimum crews before extra staffing, and actual confirmed worker changes. Test in a separate save, including a save with existing preferences.
+Acceptance should cover unchanged occupants of affected warehouse workplaces, supported neighboring workplaces still participating, the single visible icon, inactive old schedules, equal treatment despite old priority/mode preferences, the preserved builder reserve, minimum crews before extra staffing, and actual confirmed worker changes. Test in a separate save, including a save with existing preferences; use the [local test checklist](LOCAL_TEST.md).
 
 ### Historical Checks
 
