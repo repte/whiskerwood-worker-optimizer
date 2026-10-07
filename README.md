@@ -33,7 +33,9 @@ Click the assignment icon in the lower-left corner. Worker Optimizer evaluates t
 
 ## Install
 
-Download **[WorkerOptimizer-v0.3.1-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.1-preview/WorkerOptimizer-v0.3.1-preview.zip)**, not the source-code ZIP. Close the game and extract its `WorkerOptimizer` folder here:
+**Steam Workshop:** [Subscribe to Worker Optimizer](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514). **v0.3.1-preview is available.** Restart the game after Steam finishes downloading the update.
+
+**Manual installation:** Download **[WorkerOptimizer-v0.3.1-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.1-preview/WorkerOptimizer-v0.3.1-preview.zip)**, not the source-code ZIP. Close the game and extract its `WorkerOptimizer` folder here:
 
 ```text
 %LOCALAPPDATA%\Whiskerwood\Saved\mods\WorkerOptimizer\
@@ -41,7 +43,7 @@ Download **[WorkerOptimizer-v0.3.1-preview.zip](https://github.com/repte/whisker
   WorkerOptimizer.uplugin
 ```
 
-No Python or Unreal Editor is needed. Use either the local package or the [Workshop subscription](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514), never both. This Workshop update is prepared, not submitted; Steam installs only the version actually published there.
+No Python or Unreal Editor is needed. Use either the local package or the Workshop subscription, never both.
 
 [Guide and troubleshooting](docs/GUIDE.md) · [Changelog](docs/CHANGELOG.md)
 

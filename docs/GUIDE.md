@@ -8,7 +8,7 @@ Assign residents to suitable workplaces with one manual icon, while respecting t
 
 Worker Optimizer matches residents to jobs using guild specialties, productivity and job eligibility. It selects feasible minimum operating crews before filling additional positions by suitability. Active supported workplaces have equal priority in this preview.
 
-**Version scope:** this guide describes **v0.3.1-preview**. The user will perform the in-game test; acceptance is pending. GitHub publication and preparing Workshop files are separate from submitting an update to Steam. Historical validation for earlier releases does not validate this preview.
+**Version scope:** this guide describes **v0.3.1-preview**. The user will perform the in-game test; acceptance is pending. Availability on GitHub and Workshop does not change its preview status. Historical validation for earlier releases does not validate this preview.
 
 ## Features
 
@@ -26,13 +26,13 @@ Worker Optimizer matches residents to jobs using guild specialties, productivity
 
 ## Status
 
-The target is **Whiskerwood 0.7.209.0 for Windows**. The [v0.3.1-preview release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.1-preview) contains the preview package and its current verification record. The [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) receives this version only after a separate manual submission.
+The target is **Whiskerwood 0.7.209.0 for Windows**. The [v0.3.1-preview release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.1-preview) contains the preview package and its current verification record. The user confirmed publication of this version to the [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) on 7 October 2026.
 
 **In-game validation is pending and belongs to the user.** This preview skips unsupported warehouse workplaces whose native API does not expose a mutable workforce and protects their existing workers. The fix must still be tested in the shipping game. Editor tests use native-function stubs and cannot establish that game-side commands succeed. Use a separate test save. See [preview notes](releases/v0.3.1-preview.md).
 
 ## Installation
 
-For Workshop installation, subscribe, wait for Steam to download and restart the game. The prepared v0.3.1-preview upload is not a live Workshop update until manually submitted. To test this preview before submission, use its GitHub package and avoid loading the Workshop copy at the same time.
+For Workshop installation, subscribe, wait for Steam to download the available v0.3.1-preview update and restart the game. Use either Workshop or the GitHub package, never both at the same time.
 
 For manual installation, download [WorkerOptimizer-v0.3.1-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.1-preview/WorkerOptimizer-v0.3.1-preview.zip) from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.1-preview), not the source-code ZIP. Use either Workshop or a local installation, never both. Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
 

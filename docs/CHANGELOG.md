@@ -2,7 +2,7 @@
 
 ## 0.3.1-preview - 7 October 2026
 
-Workplace compatibility preview. In-game acceptance is pending; Workshop files are prepared, not submitted.
+Workplace compatibility preview, now available on Steam Workshop. In-game acceptance remains pending.
 
 - Exclude the native `ResourceBuilding` family, including `GranaryResourceBuilding` used by prefab `tinywarehouse`, because its native assignment API exposes no mutable workforce.
 - Preserve existing occupants of excluded workplaces and keep them out of reassignment and construction-reserve calculations.

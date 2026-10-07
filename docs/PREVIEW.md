@@ -2,7 +2,7 @@
 
 **Current preview: v0.3.1-preview | Target: Whiskerwood 0.7.209.0 on Windows | Updated: 7 October 2026**
 
-**In-game acceptance is pending and will be performed by the user.** The Workshop update is prepared, not submitted. See the [current release notes](releases/v0.3.1-preview.md).
+**In-game acceptance is pending and will be performed by the user.** The user confirmed that v0.3.1-preview is published on Workshop on 7 October 2026. See the [current release notes](releases/v0.3.1-preview.md).
 
 ## Current Change
 

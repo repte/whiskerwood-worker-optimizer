@@ -59,6 +59,6 @@ Bestaetigte Aenderungen werden nicht automatisch rueckgaengig gemacht. Eignungsm
 
 ## Veroeffentlichungsstatus
 
-GitHub darf mit dieser Vorschau aktualisiert werden. Der Workshop-Upload wird nur lokal vorbereitet, nicht abgeschickt. Eine vorbereitete Upload-Datei bestaetigt keine Spielabnahme.
+Die Vorschau ist auf GitHub und Workshop verfuegbar. Die Workshop-Veroeffentlichung wurde am 7. Oktober 2026 vom Benutzer bestaetigt. Die Veroeffentlichung ersetzt keine Spielabnahme; der Vorschau-Status bleibt bestehen.
 
 Historische Pruefungen der vorherigen UI sind in [Release-Validierung 0.2.0](PREVIEW.md) und im [Changelog](CHANGELOG.md) dokumentiert. Sie gelten nicht als Abnahme dieser Version.

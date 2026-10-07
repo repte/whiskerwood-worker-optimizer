@@ -1,6 +1,6 @@
 # Workshop Update: v0.3.1-preview
 
-**Prepared, not submitted.** These files are ready for the user's manual update of the existing Workshop item. Preparing this folder does not publish or change the live item.
+**Published.** The user confirmed the v0.3.1-preview update to the existing Workshop item on 7 October 2026. The version remains a preview; in-game acceptance is still pending.
 
 - App ID: `2489330`
 - Existing item ID: `3814077514`
@@ -17,6 +17,6 @@ This preview keeps one-click assignment, feasible minimum crews before extra sta
 
 The focused workplace tests, full automated editor suite, Windows cook and package checks passed for this fix; see the [verification record](../docs/verification/2026-10-07-native-workplace-capability.md). Final delivery packaging uses the new external version metadata.
 
-**In-game acceptance is pending and will be performed by the user.** Test a separate save, preferably at night or just after a new day starts; daytime assignment may cause errors. These checks do not guarantee successful live assignment. Nothing in this folder submits the Workshop update.
+**In-game acceptance is pending and will be performed by the user.** Test a separate save, preferably at night or just after a new day starts; daytime assignment may cause errors. These checks do not guarantee successful live assignment.
 
 Documentation and source: [GitHub](https://github.com/repte/whiskerwood-worker-optimizer).
