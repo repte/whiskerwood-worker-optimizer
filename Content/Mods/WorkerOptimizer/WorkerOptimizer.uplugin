@@ -1,7 +1,7 @@
 {
   "Name": "WorkerOptimizer",
   "Description": "Manually assign workers from one icon, filling minimum crews before best-fit extra staffing while respecting the saved builder reserve.",
-  "Version": "0.3.1-preview",
+  "Version": "0.3.3-performance-preview",
   "CreatedBy": "WorkerOptimizer contributors",
   "EngineVersion": "5.8"
 }

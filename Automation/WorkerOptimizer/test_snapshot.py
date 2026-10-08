@@ -51,6 +51,45 @@ def run():
         return result, component
 
     try:
+        # Contextual capacity also counts residents/visitors and future workers.
+        # Neither definition nor employee evidence may label these as unsupported.
+        for offset, component_name in enumerate(("ConstructionSite", "House", "Bathhouse")):
+            incidental, component = workplace(20000 + offset, component_name=None)
+            component = incidental.call_method("AddComponentByClass", args=(unreal.load_class(None, "/Script/ProjectArco." + component_name), False, unreal.Transform(), False))
+            assert component is not None
+            if component_name == "House":
+                put(component, "m_housingTier", 0)
+                put(component, "m_maxResidents", 4)
+            prefab = incidental.get_editor_property("PrefabInfo")
+            assert prefab.import_text(f"(prefabKey=unseen_contextual_capacity_{offset})")
+            put(incidental, "PrefabInfo", prefab)
+            snapshot.call_method("ResetSnapshot")
+            assert not snapshot.call_method("ObserveUnsupportedDefinition", args=(incidental, 4, 0, True)), component_name + " contextual capacity was misreported as employment"
+            assert not snapshot.call_method("RecordCompatibilityIssue", args=(incidental,)), component_name + " direct evidence was misreported"
+            snapshot.call_method("FinishBuildings")
+            person = worker(21000 + offset)
+            assert not snapshot.call_method("AddWorker", args=(person, incidental)), "Existing admission protections must remain in effect"
+            assert person in snapshot.get_editor_property("ProtectedWorkers")
+            assert not snapshot.get_editor_property("CompatibilityBuildings"), component_name
+            assert not snapshot.get_editor_property("CompatibilityMessages"), component_name
+
+        # A real workforce must win over contextual components, preserving
+        # incumbents and retaining the compatibility warning.
+        for offset, contextual in enumerate((None, "House", "Bathhouse")):
+            person = worker(22000 + offset)
+            unsupported, component = workplace(23000 + offset, person, component_name="ResourceBuilding")
+            if contextual:
+                assert unsupported.call_method("AddComponentByClass", args=(unreal.load_class(None, "/Script/ProjectArco." + contextual), False, unreal.Transform(), False))
+            before = component.get_editor_property("m_workers").export_text()
+            snapshot.call_method("ResetSnapshot")
+            assert not snapshot.call_method("AddBuilding", args=(unsupported,))
+            assert list(snapshot.get_editor_property("CompatibilityBuildings")) == [unsupported], "Unsupported workforce was hidden by contextual components"
+            assert person in snapshot.get_editor_property("ProtectedWorkers")
+            snapshot.call_method("FinishBuildings")
+            assert not snapshot.call_method("AddWorker", args=(person, unsupported))
+            assert component.get_editor_property("m_workers").export_text() == before
+            assert len(snapshot.get_editor_property("CompatibilityMessages")) == 1
+        snapshot.call_method("ResetSnapshot")
         available, paused_worker, foreign_worker, unknown_worker, free_worker = [worker(i) for i in range(5)]
         active, active_component = workplace(10, available)
         paused, _ = workplace(11, paused_worker, paused=True)

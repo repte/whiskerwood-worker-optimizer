@@ -220,6 +220,62 @@ def run():
         assert begin([0])
         define(["education"])
         assert finish() == [0, -1, -1, -1, -1, -1, -1, 100], "Existing protected pupil is preserved after its teacher's guild changes"
+
+        # Cached ordinary edges still use the production matrix cursor and validation.
+        batch_building, _ = building(2210, "Industry", [None, None])
+        capture([batch_building], workers, [None] * 4)
+        cached_scores = [10.0, 11.0, 12.0, 13.0, 20.0, 21.0, 22.0, 23.0]
+
+        def begin_batch(limit, values=cached_scores):
+            put(matrix, "StepWorkLimit", 1)
+            assert begin([-1])
+            assert matrix.call_method("UseOrdinaryScores", args=(layout, values))[-1]
+            define(["production"])
+            put(matrix, "StepWorkLimit", limit)
+
+        for limit in (1, 4, 64):
+            begin_batch(limit)
+            calls = 0
+            while not matrix.get_editor_property("MatrixDone") and calls < 10:
+                matrix.call_method("AdvanceMatrix")
+                calls += 1
+                assert 0 < matrix.get_editor_property("LastStepWork") <= limit
+                if calls == 1:
+                    assert list(matrix.get_editor_property("Scores")) == cached_scores[:limit], (
+                        "AdvanceMatrix must use its work budget for multiple edges", limit,
+                        list(matrix.get_editor_property("Scores")))
+            assert matrix.get_editor_property("MatrixSucceeded"), matrix.get_editor_property("FailureCode")
+            assert list(matrix.get_editor_property("Scores")) == cached_scores
+            assert calls <= {1: 9, 4: 3, 64: 1}[limit], (limit, calls)
+
+        put(matrix, "StepWorkLimit", 1)
+        assert begin([-1])
+        define(["production"])
+        put(matrix, "StepWorkLimit", 64)
+        matrix.call_method("AdvanceMatrix")
+        assert matrix.get_editor_property("MatrixDone") and not matrix.get_editor_property("MatrixSucceeded")
+        assert str(matrix.get_editor_property("FailureCode")) == "score_unavailable"
+        assert matrix.get_editor_property("LastStepWork") == 2, "Native score failure must stop the batch after prepare/score"
+        assert not list(matrix.get_editor_property("Scores"))
+
+        invalid_cache = list(cached_scores)
+        invalid_cache[2] = math.nan
+        begin_batch(64, invalid_cache)
+        matrix.call_method("AdvanceMatrix")
+        assert matrix.get_editor_property("MatrixDone") and not matrix.get_editor_property("MatrixSucceeded")
+        assert str(matrix.get_editor_property("FailureCode")) == "invalid_score"
+        assert matrix.get_editor_property("LastStepWork") == 3, "A batch must stop at its first invalid edge"
+        assert not list(matrix.get_editor_property("Scores"))
+
+        begin_batch(4)
+        matrix.call_method("AdvanceMatrix")
+        assert matrix.get_editor_property("MatrixActive")
+        matrix.call_method("FailMatrix", args=("cancelled",))
+        assert not matrix.call_method("AdvanceMatrix")
+        assert matrix.get_editor_property("LastStepWork") == 0
+        assert not list(matrix.get_editor_property("Scores"))
+        assert str(matrix.get_editor_property("FailureCode")) == "cancelled"
+        put(matrix, "StepWorkLimit", 1)
         capture([], [], [])
         assert begin([])
         prepare()

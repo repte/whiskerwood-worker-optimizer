@@ -48,6 +48,7 @@ definitions = {
     "PrepareEdge": [],
     "SetupStep": [],
     "RecordScore": [("Valid", "bool"), ("Value", "float")],
+    "AdvanceEdge": [],
     "AdvanceMatrix": [],
 }
 graphs = {}
@@ -316,6 +317,16 @@ code["AdvanceMatrix"] = f"""(fn AdvanceMatrix ()
           :Type {at(sg('PrefabKeys'), g('BuildingIndex'))} :Category d_toolbarGroup :StringKey d_stringKey))
         (if (not optionsReady) {fail('option_registration_failed')}))
       (bind accepted (CallFunction|RecordDefinition :Category d_toolbarGroup :Found found)) (return accepted))
+    {put('LastStepWork', '0')}
+    (for work (range {g('StepWorkLimit')})
+      {put('LastStepWork', f'(+ {g("LastStepWork")} 1)')}
+      (bind advanced (CallFunction|AdvanceEdge))
+      (if (not {g('MatrixActive')}) (return {g('MatrixSucceeded')}))
+      (if (not advanced) (return false)))
+    (return true))"""
+
+code["AdvanceEdge"] = f"""(fn AdvanceEdge ()
+    (if (or {g('SetupActive')} (or (not {g('MatrixActive')}) (!= {g('Stage')} 1))) (return false))
     (if (not {g('AwaitingScore')})
       (bind prepared (CallFunction|PrepareEdge)) (return prepared))
     (if {g('SchoolEdge')}

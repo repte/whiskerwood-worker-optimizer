@@ -8,12 +8,12 @@ Assign residents to suitable workplaces with one manual icon, while respecting t
 
 Worker Optimizer matches residents to jobs using guild specialties, productivity and job eligibility. It selects feasible minimum operating crews before filling additional positions by suitability. Active supported workplaces have equal priority in this preview.
 
-**Version scope:** this guide describes **v0.3.1-preview**. The user will perform the in-game test; acceptance is pending. Availability on GitHub and Workshop does not change its preview status. Historical validation for earlier releases does not validate this preview.
+**Version scope:** this guide describes **v0.3.3-performance-preview**. The Workshop update is prepared, not submitted. Public in-game acceptance remains pending and belongs to the user. Historical validation for earlier releases does not validate this preview.
 
 ## Features
 
 - A small action button in the lower-left corner of the game.
-- An always-visible assignment icon. The former visibility shortcut is disabled, including previously saved bindings.
+- An assignment icon confined to the gameplay HUD, using the same native gameplay-HUD visibility checks as the Campfire Panel mod. The former visibility shortcut remains disabled, including previously saved bindings.
 - One manual reassignment request per click. Saved automatic schedules are disabled.
 - A saved reserve of unassigned residents for construction: **1 by default**, **0 to disable**. This preview has no reserve or shortcut editor.
 - Feasible minimum operating crews before additional workers, subject to eligibility and the construction reserve.
@@ -23,18 +23,19 @@ Worker Optimizer matches residents to jobs using guild specialties, productivity
 - Dynamic discovery of building definitions instead of a hardcoded building list.
 - Unsupported workplaces skipped and reported, with their workers protected.
 - Translations for all 17 game languages, with English fallback.
+- Faster planning through exact work reduction, without an approximate or hybrid replacement solver.
 
 ## Status
 
-The target is **Whiskerwood 0.7.209.0 for Windows**. The [v0.3.1-preview release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.1-preview) contains the preview package and its current verification record. The user confirmed publication of this version to the [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) on 7 October 2026.
+The target is **Whiskerwood 0.7.209.0 for Windows**. **Version: [v0.3.3-performance-preview](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.3-performance-preview).** The existing [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) remains the update target; its live version is v0.3.1-preview. The Workshop update is prepared, not submitted.
 
-**In-game validation is pending and belongs to the user.** This preview skips unsupported warehouse workplaces whose native API does not expose a mutable workforce and protects their existing workers. The fix must still be tested in the shipping game. Editor tests use native-function stubs and cannot establish that game-side commands succeed. Use a separate test save. See [preview notes](releases/v0.3.1-preview.md).
+**Public in-game acceptance is pending and belongs to the user.** Performance and gameplay-layer visibility must be checked in the shipping game, along with the preserved workplace protections. Editor tests use native-function stubs and cannot establish that game-side commands succeed. Use a separate test save. See [preview notes](releases/v0.3.3-performance-preview.md).
 
 ## Installation
 
-For Workshop installation, subscribe, wait for Steam to download the available v0.3.1-preview update and restart the game. Use either Workshop or the GitHub package, never both at the same time.
+The Workshop update is prepared, not submitted. After Workshop publication, subscribe, wait for Steam to download the update and restart the game. Until then the existing subscription provides v0.3.1-preview. Use either Workshop or the local package, never both at the same time.
 
-For manual installation, download [WorkerOptimizer-v0.3.1-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.1-preview/WorkerOptimizer-v0.3.1-preview.zip) from [Releases](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.1-preview), not the source-code ZIP. Use either Workshop or a local installation, never both. Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
+For manual installation, use [WorkerOptimizer-v0.3.3-performance-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.3-performance-preview/WorkerOptimizer-v0.3.3-performance-preview.zip), or the separately provided verified local test package. Do not use the source-code ZIP. Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
 
 ```text
 %LOCALAPPDATA%\Whiskerwood\Saved\mods\WorkerOptimizer\
@@ -42,7 +43,7 @@ For manual installation, download [WorkerOptimizer-v0.3.1-preview.zip](https://g
   WorkerOptimizer.uplugin
 ```
 
-Start the game and load a settlement. Only the assignment icon should appear in the lower-left corner; settings and logbook controls must not appear.
+Start the game and load a settlement. Only the assignment icon should appear in the lower-left gameplay HUD; settings and logbook controls must not appear. The icon should not appear over menus, loading or saving screens.
 
 The packaged mod does not require Python, Unreal Editor or the development tools. To uninstall, close the game and remove only the `WorkerOptimizer` folder from `mods`. Do not remove any save files.
 
@@ -56,7 +57,9 @@ The optimizer captures scoring values once per plan. Ordinary speed/productivity
 
 A rejected or unobserved result is treated as failure. After the request and its result processing finish, another manual attempt is possible; a returned native failure does not leave a persistent lock or require a world reload. An unrelated later state change is not counted as a late success. Revised native request handling still needs game testing and does not guarantee acceptance by the game. Inspect results in the game's building/resident windows and consult the mod log when reporting failures.
 
-The icon is always visible. **Ctrl + Alt + O** and previously saved visibility bindings are disabled. There is no gear, logbook button or shortcut editor in this preview.
+The icon uses the same native gameplay-HUD visibility checks as the Campfire Panel mod. It appears only in the visible, faded-in gameplay HUD. Menus or other blocking game views, hidden HUD, loading, saving, replay and developer HUD hiding suppress it. Pausing the simulation or reaching end of day does not itself hide it. A pause menu is still a menu and hides the icon.
+
+Hiding the icon does not cancel or restart an active assignment request. When gameplay visibility returns, the same request's current state is shown. **Ctrl + Alt + O** and previously saved visibility bindings remain disabled. There is no gear, logbook button or shortcut editor in this preview.
 
 ### Existing Preferences
 
@@ -66,7 +69,7 @@ The icon is always visible. **Ctrl + Alt + O** and previously saved visibility b
 | Assignment mode: strict/weighted | Ignored. Active supported buildings use the same priority. |
 | Category and building-type priorities | Ignored. No building receives an earlier priority tier from old preferences. |
 | Automatic assignment | Disabled, including an earlier saved day-start or minute schedule. |
-| Visibility shortcut | Disabled. The icon remains visible, including with an older saved binding. |
+| Visibility shortcut | Disabled. Native gameplay-layer visibility applies, regardless of an older saved binding. |
 
 The reserve counts eligible, movable residents only. Workers protected in paused or unsupported buildings do not count toward it, and construction-yard employees are not unassigned builders. If fewer eligible residents are available than requested, all available residents remain free.
 
@@ -103,6 +106,8 @@ Each run has five stages:
 Among otherwise equal production outcomes, the reserve selection favors residents with better neutral productivity, carrying capacity and movement speed. This is a tie-breaking heuristic, not a prediction of exact construction time.
 
 Planning advances incrementally across ticks. A map-load session owns the controller, action bridge and widget, prevents duplicate controls and cleans up its references when the world ends. Loading a save does not trigger an assignment run, and schedules are disabled.
+
+The performance update keeps this exact assignment approach and its constraints. It reduces repeated matrix work, solver scans and later-pass processing, and prunes school combinations only when they cannot improve the result. It does not add approximate search, a hybrid solver or an arbitrary candidate limit.
 
 Startup listens for the native load-completion event and also checks `ProjectArcoGameModeBase.CurrentInitPhase`. Once the phase is `DONE` and a player controller exists, a missing event no longer prevents session creation. The fallback is checked at half-second intervals and stops once the session is ready; it never triggers optimization.
 
@@ -157,11 +162,13 @@ Only the `.pak` and `.uplugin` files in that folder are installation inputs. The
 
 ## Verification and Known Limits
 
-**Current preview: in-game validation is pending.** The user will test **0.3.1-preview**. Its workplace exclusion and occupant protection must be checked against the real game; neither editor fixtures nor successful package checks prove that live assignments succeed. See [preview notes](releases/v0.3.1-preview.md) for the current verification status.
+**Current preview: public in-game acceptance is pending.** The user will test **0.3.3-performance-preview**. Neither editor fixtures nor successful package checks prove that live assignments succeed. See [preview notes](releases/v0.3.3-performance-preview.md) for verification status.
 
-The focused workplace tests, full automated editor suite, Windows cook and package checks passed for this fix on 7 October 2026 (CEST). The [native workplace capability verification](verification/2026-10-07-native-workplace-capability.md) records those checks and their tested build. The final v0.3.1-preview delivery is packaged separately with updated external version metadata.
+Six compiled-editor benchmarks with 1,000 workers took **5.61-14.55 seconds of accumulated planner calls** on the test machine. Assignment hashes and the checked staffing, productivity and reserve objectives were unchanged. The [large-settlement verification record](verification/2026-10-08-large-settlements.md) contains both measurement runs, fixtures and hardware context. These timings exclude the complete in-game capture, scoring, school-search, frame scheduling and application workflow; they are not a guarantee for total in-game duration or every settlement.
 
-Acceptance should cover unchanged occupants of affected warehouse workplaces, supported neighboring workplaces still participating, the single visible icon, inactive old schedules, equal treatment despite old priority/mode preferences, the preserved builder reserve, minimum crews before extra staffing, and actual confirmed worker changes. Test in a separate save, including a save with existing preferences; use the [local test checklist](LOCAL_TEST.md).
+Combined build `20261008-115852-7696bc58` passed the complete editor suite, including the gameplay-visibility regression, a Windows Shipping cook and package checks on 8 October 2026. The package contains 46 runtime assets / 92 entries; solver and planner asset hashes match the measured performance candidate. See the [gameplay-visibility verification record](verification/2026-10-08-gameplay-visibility.md) for saved-asset checks and final package identification. Public gameplay acceptance remains separate.
+
+Acceptance should cover the gameplay-only icon through menus, pause, end of day, HUD hiding, loading and saving; request continuity while hidden; large-settlement total runtime; unchanged protected occupants; the preserved builder reserve; minimum crews before extra staffing; and actual confirmed worker changes. Saved schedules remain inactive and old priority/mode preferences remain ignored. Test a separate save with existing preferences; use the [local test checklist](LOCAL_TEST.md).
 
 ### Historical Checks
 

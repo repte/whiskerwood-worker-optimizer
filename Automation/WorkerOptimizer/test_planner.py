@@ -1,7 +1,6 @@
 """Behavior tests for the compiled staffing policy and its real solver."""
 
 import itertools
-import math
 import random
 import time
 
@@ -14,11 +13,15 @@ def finish(planner, rows, workers, buildings, strict):
     work_bound = 100 + 10 * (rows + workers + buildings)
     work_bound += rows * (rows + 1) * (workers + 5) + buildings * (buildings + rows)
     work_bound += passes * (2 * rows * (workers + rows) + rows * (rows + 1) * (3 * width + 10) + 20 * (rows + workers + buildings))
-    for _ in range(math.ceil(work_bound / max(1, planner.get_editor_property("StepWorkLimit"))) + 1):
+    primitive_work = 0
+    # Phase boundaries may yield before using the entire per-call budget.
+    for _ in range(work_bound + 1):
         if planner.get_editor_property("PlanDone"):
             break
         planner.call_method("AdvancePlan")
         assert 0 <= planner.get_editor_property("LastStepWork") <= planner.get_editor_property("StepWorkLimit")
+        primitive_work += int(planner.get_editor_property("LastStepWork"))
+        assert primitive_work <= work_bound, "Planner exceeded primitive-work completion bound"
     assert planner.get_editor_property("PlanDone"), "Planner exceeded primitive-work completion bound"
 
 

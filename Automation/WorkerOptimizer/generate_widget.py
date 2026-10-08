@@ -181,7 +181,7 @@ for name, asset in refs.items():
         BP.add_object_variable(bp, name, load(asset))
 if 'NativeHudWidget' not in existing:
     BP.add_object_variable(bp, 'NativeHudWidget', unreal.Widget.static_class())
-for name in ("Initialized", "Closed", "ButtonVisible", "SettingsOpen", "UpdatingKey"):
+for name in ("Initialized", "Closed", "ButtonVisible", "SettingsOpen", "UpdatingKey", "GameplayVisible"):
     if name not in existing:
         BP.add_variable(bp, name, "bool")
 for name in ('GeometryWatching','NotificationsBound','LayoutSettling','ShadowVisible'):
@@ -198,6 +198,7 @@ chord = unreal.load_object(None, "/Script/Slate.InputChord")
 definitions = {
     "HasObject": [("Object", unreal.Object.static_class())],
     "InitializeUI": [("InputController", load("BP_WorkerOptimizer")), ("InputConfig", load("BP_HotkeyConfig"))],
+    "ApplyGameplayVisibility": [("Visible", "bool")],
     "ToggleButton": [], "ToggleSettings": [], "ClickAction": [], "RefreshUI": [], "RefreshSettingsStatus": [],
     "InitializePanel": [], "OpenLogbook": [],
     "SyncKey": [], "KeyChanged": [("Chord", chord)], "IsCapturing": [], "ShutdownUI": [],
@@ -364,6 +365,15 @@ code['CompletedTooltip']=f'''(fn CompletedTooltip ()
     (return result))'''
 code["HasObject"] = """(fn HasObject (Object)
     (Utilities|IsValid Object (:"Is Valid" (return true)) (:"Is Not Valid" (return false))))"""
+code["ApplyGameplayVisibility"] = f"""(fn ApplyGameplayVisibility (Visible)
+    (if {g('Closed')} (return false))
+    (if (== Visible {g('GameplayVisible')}) (return true))
+    {put('GameplayVisible', 'Visible')}
+    (if Visible
+      (Widget|SetVisibility :self self :InVisibility "SelfHitTestInvisible")
+      (CallFunction|RefreshLayout) (return true))
+    (Widget|SetVisibility :self self :InVisibility "Collapsed")
+    (return true))"""
 code["InitializeUI"] = f"""(fn InitializeUI (InputController InputConfig)
     (if {g('Closed')} (return false))
     (if {g('Initialized')} (return (and (== InputController {g('Controller')}) (== InputConfig {g('Config')}))))
@@ -538,6 +548,7 @@ code["RefreshUI"] = f"""(fn RefreshUI () {guard}
     (CallFunction|UpdateGeometryWatcher)
     (return true))"""
 code["ShutdownUI"] = f"""(fn ShutdownUI ()
+    (CallFunction|ApplyGameplayVisibility :Visible false)
     {put('Closed', 'true')} {put('Initialized', 'false')} {put('SettingsOpen', 'false')} {put('ButtonVisible', 'false')}
     {put('GeometryWatching','false')}
     {put('ShadowVisible','false')} {visible('PanelShadow','Collapsed')}
@@ -641,6 +652,7 @@ if MANUAL_ONLY:
     code["ApplyActionDisplay"] = code["ApplyActionDisplay"].replace(
         visible("BusyText", "HitTestInvisible"), visible("BusyText", "Collapsed"))
     code["ShutdownUI"] = f"""(fn ShutdownUI ()
+        (CallFunction|ApplyGameplayVisibility :Visible false)
         (if (and {g('NotificationsBound')} {present(g('Controller'))}) (CallFunction|UnbindController))
         {put('Closed', 'true')} {put('Initialized', 'false')} {put('SettingsOpen', 'false')}
         {put('ButtonVisible', 'false')} {put('NotificationsBound', 'false')}
@@ -716,6 +728,9 @@ with toolset_registry.tool_raising_exceptions():
             BP.connect_pins(next(p.pin_id for p in event_info.output_pins if p.name == "SelectedKey"),
                             next(p.pin_id for p in target_info.input_pins if p.name == "Chord"))
     BP.compile_blueprint(bp, warnings_as_errors=True)
+    cdo = unreal.get_default_object(bp.generated_class())
+    cdo.set_editor_property("GameplayVisible", False)
+    cdo.set_editor_property("visibility", unreal.SlateVisibility.COLLAPSED)
     assert unreal.EditorAssetLibrary.save_loaded_asset(bp)
     Path(unreal.Paths.project_saved_dir(), "WorkerOptimizer-Widget.dsl").write_text("\n\n".join(code.values()), encoding="utf-8")
 unreal.log("WO_WIDGET_GENERATED")

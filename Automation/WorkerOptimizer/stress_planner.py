@@ -42,7 +42,9 @@ def dense_fixture(size, strict):
     passes = 6 if strict else 2
     primitive_bound = 100 + 10 * (2 * size + len(priorities)) + len(priorities) * size * (size + 3)
     primitive_bound += passes * (2 * size * size + size * (size + 1) * (6 * size + 10) + 20 * size)
-    for _ in range((primitive_bound + 63) // 64 + 1):
+    primitive_work = 0
+    # Bounded phases can yield with part of the per-call budget unused.
+    for _ in range(primitive_bound + 1):
         if planner.get_editor_property("PlanDone"):
             break
         state = planner.get_editor_property("State")
@@ -56,6 +58,8 @@ def dense_fixture(size, strict):
             solver_setup_max = max(solver_setup_max, elapsed)
         calls += 1
         assert 0 <= planner.get_editor_property("LastStepWork") <= 64
+        primitive_work += int(planner.get_editor_property("LastStepWork"))
+        assert primitive_work <= primitive_bound, "Planner exceeded primitive-work completion bound"
     host_seconds = time.perf_counter() - start
     assert planner.get_editor_property("PlanDone") and planner.get_editor_property("PlanSucceeded"), (size, strict, calls)
     assert list(planner.get_editor_property("PlanAssignment")) == [(r + 17) % size for r in range(size)]
@@ -66,7 +70,7 @@ def dense_fixture(size, strict):
     payload = 8 * sum(arrays[n] for n in ("BaseScores", "PassScores", "Scores", "U", "V", "MinV"))
     payload += 4 * (arrays["P"] + arrays["Way"]) + arrays["AllowedEdges"] + arrays["Used"]
     unreal.log(f"WO_PLANNER_SIZE: rows={size} workers={size} buildings={len(priorities)} schools=0 reserve=0 strict={strict} "
-               f"limit=64 calls={calls} finite_call_bound={(primitive_bound+63)//64+1} host_s={host_seconds:.6f} "
+               f"limit=64 calls={calls} primitive_work={primitive_work} primitive_bound={primitive_bound} host_s={host_seconds:.6f} "
                f"setup_call_s={setup_seconds:.6f} compiled_call_sum_s={compiled_seconds:.6f} compiled_call_max_s={max_call:.6f} "
                f"max_call_start_state={max_state} solver_setup_transition_max_s={solver_setup_max:.6f} "
                f"process_working_set_before={before} after={after} process_lifetime_peak={peak} selected_array_payload_bytes={payload} "

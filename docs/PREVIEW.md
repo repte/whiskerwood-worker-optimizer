@@ -1,31 +1,35 @@
 # Preview Validation
 
-**Current preview: v0.3.1-preview | Target: Whiskerwood 0.7.209.0 on Windows | Updated: 7 October 2026**
+**Version: v0.3.3-performance-preview | Target: Whiskerwood 0.7.209.0 on Windows | Updated: 8 October 2026**
 
-**In-game acceptance is pending and will be performed by the user.** The user confirmed that v0.3.1-preview is published on Workshop on 7 October 2026. See the [current release notes](releases/v0.3.1-preview.md).
+**Public in-game acceptance remains pending and belongs to the user.** See the [release notes](releases/v0.3.3-performance-preview.md), [GitHub release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.3-performance-preview) and [packaged ZIP](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.3-performance-preview/WorkerOptimizer-v0.3.3-performance-preview.zip). The Workshop update is prepared, not submitted; its live version remains v0.3.1-preview.
 
 ## Current Change
 
-The native `ResourceBuilding` family, including `GranaryResourceBuilding` used by prefab `tinywarehouse`, is excluded from assignment planning because its native API exposes no mutable workforce. Existing occupants remain protected and cannot be moved to other jobs or counted as free builders. This avoids the specific rejected hire that could stop a run at those workplaces; it does not establish that every live assignment will succeed.
+The performance update removes repeated work while preserving the existing exact assignment approach, constraints and checked outcomes. No approximate search, hybrid solver or arbitrary candidate limit is introduced.
 
-One-click assignment, feasible minimum crews before extra staffing, and the saved construction reserve remain unchanged.
+The assignment icon uses the same native gameplay-HUD visibility checks as the Campfire Panel mod and belongs only to the gameplay HUD. It hides in menus, when the HUD is hidden, during loading or saving, and in replay. Simulation pause and end of day do not themselves hide it. Temporarily hiding the icon does not cancel or restart an active request.
+
+One-click assignment, feasible minimum crews before extra staffing, the saved construction reserve and protection of paused/unsupported workplaces remain unchanged. The warehouse compatibility behavior introduced in [v0.3.1-preview](releases/v0.3.1-preview.md) is retained.
 
 ## Current Verification
 
-Targeted workplace regressions, the full automated editor suite, Windows cook and package checks passed for the final v0.3.1-preview package on 7 October 2026. The [native workplace capability record](verification/2026-10-07-native-workplace-capability.md) documents the inspected game behavior and exact build evidence. Temporary diagnostic instrumentation is not included.
+Six compiled-editor planner benchmarks with 1,000 workers took **5.61-14.55 seconds** on the test machine. Assignment hashes and checked objectives were unchanged. The [large-settlement record](verification/2026-10-08-large-settlements.md) documents the complete editor suite, repeated measurements and pre-icon local package. These timings measure planner calls, not total in-game duration; school search, frame scheduling, capture/scoring and assignment application can add time.
+
+Combined build `20261008-115852-7696bc58` passed the complete editor suite, including gameplay visibility, a Windows Shipping cook and package checks on 8 October 2026. The final package contains 46 runtime assets / 92 entries (557,151 bytes); solver and planner asset hashes match the measured performance candidate. The [gameplay-visibility record](verification/2026-10-08-gameplay-visibility.md) documents the saved-asset checks and final package checksum.
 
 These checks do not replace shipping-game acceptance. Use a separate save and only one installed copy of the mod. Prefer night or just after day start; daytime assignment may cause errors.
 
-1. Record an affected warehouse workplace's existing workers and slots, run assignment once, and confirm its occupants remain unchanged.
-2. Confirm supported neighboring workplaces still participate, subject to worker eligibility and the saved construction reserve.
-3. Compare actual assignments, minimum crews and free residents before and after; a finished busy indicator alone does not prove success.
-4. Report any failed run with the tooltip, relevant log entries and before/after observations.
+1. Check that the icon follows gameplay visibility: pause/end of day alone keep it visible; menus, hidden HUD, loading and saving hide it.
+2. Hide and restore the icon during an active request; confirm no cancellation, duplicate request or restart occurs.
+3. Measure complete large-settlement runs, including schools, and compare actual assignments, minimum crews and free residents. A finished busy indicator alone does not prove success.
+4. Confirm paused and unsupported warehouse occupants remain unchanged, and report failed runs with tooltips, logs and before/after observations.
 
 See the [local game-test checklist](LOCAL_TEST.md) for the detailed acceptance checks.
 
 ## Historical: 0.2.0 Release Validation
 
-The following record is retained for the older release. Its features, Workshop status and game acceptance do not describe v0.3.1-preview.
+The following record is retained for the older release. Its features, Workshop status and game acceptance do not describe v0.3.3-performance-preview.
 
 **Release: `0.2.0` | Tested candidate: `0.2.0-local.7` | Updated: 6 October 2026**
 

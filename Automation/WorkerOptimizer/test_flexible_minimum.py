@@ -1,6 +1,5 @@
 """Exhaustive physical-slot oracles for compiled flexible minimum crews."""
 import itertools
-import math
 import random
 import unreal
 from editor_toolset.toolsets.blueprint import BlueprintTools as BP
@@ -66,11 +65,15 @@ def check(scores, buildings, minimum, priorities, flexible, strict, fixed=None, 
     passes = 6 if strict else 2
     work_bound = 1000 + 100 * (rows + columns + len(priorities)) ** 2
     work_bound += passes * rows * (rows + 1) * (10 * (columns + rows) + 100)
-    for _ in range(math.ceil(work_bound / limit) + 1):
+    primitive_work = 0
+    # Bounded phases can yield with part of the per-call budget unused.
+    for _ in range(work_bound + 1):
         if planner.get_editor_property("PlanDone"):
             break
         planner.call_method("AdvancePlan")
         assert 0 <= planner.get_editor_property("LastStepWork") <= limit
+        primitive_work += int(planner.get_editor_property("LastStepWork"))
+        assert primitive_work <= work_bound, "Flexible planner exceeded primitive-work completion bound"
         if strict and has_quota_columns:
             synthetic_face_seen |= any(list(planner.get_editor_property("RequiredWorker"))[workers:])
     assert planner.get_editor_property("PlanDone") and planner.get_editor_property("PlanSucceeded"), (

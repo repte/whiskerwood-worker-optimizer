@@ -1,8 +1,14 @@
-v0.3.1-preview - Workplace compatibility
-- Skip unsupported warehouse workplaces while preserving their existing workers.
-- Avoid the specific rejected hire that could stop an assignment run at those workplaces.
-- Keep one-click assignment, feasible minimum crews first, best-fit extra staffing and the saved construction reserve.
+v0.3.3-performance-preview - Prepared update, not submitted
+- Reduce repeated planning work while retaining the existing exact assignment approach, with no approximate or hybrid replacement solver.
+- Measure six compiled-editor 1,000-worker planner cases at 5.61-14.55 seconds on the test machine, with unchanged checked assignments and objectives.
+- Use the same native gameplay-HUD visibility checks as the Campfire Panel mod: gameplay HUD only; hidden in menus, with hidden HUD, during loading or saving, and in replay. Simulation pause and end of day do not themselves hide it.
+- Preserve active assignments when the icon is temporarily hidden; hiding does not cancel or restart a request.
+- Keep feasible minimum crews first, best-fit extra staffing, the saved construction reserve and protected workers.
 
-Editor suite, targeted workplace tests and package checks passed for this fix. In-game validation is pending; test a separate save first, preferably at night or just after day start. This does not guarantee every assignment will succeed.
+The timing is accumulated planner-call time, not guaranteed total in-game duration. Combined build 20261008-115852-7696bc58 passed the complete editor suite including gameplay visibility, Windows Shipping cook and package checks (46 runtime assets / 92 entries). Public in-game acceptance remains pending; test a separate save first, preferably at night or just after day start. No Workshop upload has been performed for this prepared update.
+
+Combined verification: https://github.com/repte/whiskerwood-worker-optimizer/blob/main/docs/verification/2026-10-08-gameplay-visibility.md
 
 Documentation and source: https://github.com/repte/whiskerwood-worker-optimizer
+Release: https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.3-performance-preview
+Package: https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.3-performance-preview/WorkerOptimizer-v0.3.3-performance-preview.zip

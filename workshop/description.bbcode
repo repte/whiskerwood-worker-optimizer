@@ -5,26 +5,31 @@ Match your residents' specialties to your settlement's workplaces. Worker Optimi
 
 [h2]Features[/h2]
 [list]
-[*][b]One-click assignment:[/b] evaluate and assign your current workforce from an always-visible icon.
+[*][b]One-click assignment:[/b] evaluate and assign your current workforce from an icon in the gameplay HUD.
 [*][b]Better job matches:[/b] considers guild specialties, productivity and job requirements.
 [*][b]Minimum crews first:[/b] fill feasible minimum crews before adding suitable workers to extra positions.
 [*][b]Construction reserve:[/b] keep residents available for building, using your saved reserve or 1 resident by default.
 [*][b]Preserve protected workers:[/b] leave paused buildings and unsupported warehouse workplaces unchanged.
+[*][b]Faster exact planning:[/b] reduce repeated work while keeping the existing exact assignment approach.
 [/list]
 
 [h2]Getting started[/h2]
-Subscribe and restart after Steam downloads the update. Use either Workshop or a local installation, never both.
+[b]Workshop update:[/b] v0.3.3-performance-preview is prepared, not submitted. The live Workshop version remains v0.3.1-preview. After Workshop publication, restart once Steam downloads the update. Use either Workshop or a local installation, never both.
 
 Click the lower-left assignment icon. It shows when assignment is running and becomes available again when the run ends. Check the assigned workers in the game's building and resident windows.
+
+The icon uses the same native gameplay-HUD visibility checks as the Campfire Panel mod. It appears only in the gameplay HUD and hides in menus, with hidden HUD, during loading or saving, and in replay. Simulation pause and end of day do not themselves hide it. Hiding the icon does not cancel or restart an active assignment.
 
 [b]Recommended timing:[/b] Run assignment at night or just after a new day starts. Running it during the day may cause assignment errors.
 
 [h2]Preview information[/h2]
-[b]v0.3.1-preview[/b] targets Whiskerwood 0.7.209.0 on Windows. [b]In-game validation is pending.[/b] Try a separate save first. Assignment covers supported active workplaces; available workers, the construction reserve and job requirements determine which buildings can be staffed.
+[b]Version: v0.3.3-performance-preview[/b] targets Whiskerwood 0.7.209.0 on Windows. [b]Public in-game acceptance remains pending.[/b] Try a separate save first. Assignment covers supported active workplaces; available workers, the construction reserve and job requirements determine which buildings can be staffed.
 
-This update skips unsupported warehouse workplaces while keeping their existing workers. It addresses a rejected assignment that could stop a run at those buildings.
+Six compiled-editor planner benchmarks with 1,000 workers took [b]5.61-14.55 seconds[/b] on the test machine, with unchanged checked assignments and objectives. These measure planner calls, [b]not the entire in-game operation[/b], and are not a guaranteed runtime. School search, frame scheduling and other stages can add time. No approximate or hybrid replacement solver was introduced.
 
 [h2]Source, documentation and feedback[/h2]
+[url=https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.3-performance-preview]Release v0.3.3-performance-preview[/url] | [url=https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.3-performance-preview/WorkerOptimizer-v0.3.3-performance-preview.zip]Packaged ZIP[/url]
+
 [url=https://github.com/repte/whiskerwood-worker-optimizer]https://github.com/repte/whiskerwood-worker-optimizer[/url]
 
 [h2]Credits[/h2]

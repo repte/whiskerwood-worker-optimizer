@@ -20,8 +20,8 @@ for name in ("Targets", "SeenOccupants"):
     if name not in existing:
         BP.add_object_variable(bp, name, worker_class, container_type=ContainerType.ARRAY)
 for kind, names in {
-    "bool": "BuildActive BuildDone BuildSucceeded",
-    "int": "Stage BuildingIndex SlotIndex RowIndex",
+    "bool": "BuildActive BuildDone BuildSucceeded NormalizationExcluded",
+    "int": "Stage BuildingIndex SlotIndex RowIndex NormalizationDisplaced",
     "name": "FailureCode",
     "int[]": "FinalWorkers RowBuildings RowSlots OldWorkers CurrentWorkers SeenTargets BuildingStarts ActionBuildings ActionSlots ActionWorkers",
     "bool[]": "Required NativeRequired BuildingHasAny BuildingHasMovable BuildingMissingRequired BuildingNeedsFirstMinimum ActionFire",
@@ -35,6 +35,7 @@ definitions = {
     "FailBuild": [("Reason", "name")],
     "BeginBuild": [("InputSnapshot", load("BP_WorkforceSnapshot")), ("InputWorkers", "int[]")],
     "CaptureRow": [],
+    "NormalizeRow": [],
     "ValidateRow": [],
     "AppendAction": [("Fire", "bool")],
     "NeedsFirstMinimum": [("Index", "int")],
@@ -148,6 +149,29 @@ code["NeedsFirstMinimum"] = f"""(fn NeedsFirstMinimum (Index)
         {unpack('WorkerSlot', at('wf_m_workerSlots', 'i'), 'current')}
         (if (== current_Agent {at(sg('Workers'), 'target')}) (return false))))
     (return true))"""
+code["NormalizeRow"] = f"""(fn NormalizeRow ()
+    (if {g('NormalizationExcluded')} (return true))
+    {unpack('WorkerAssignment', at(sg('Workforces'), g('BuildingIndex')), 'wf')}
+    (bind firstRow (- {g('RowIndex')} {g('SlotIndex')}))
+    {unpack('WorkerSlot', at('wf_m_workerSlots', g('SlotIndex')), 'original')}
+    (if (not {present('original_Agent')}) (return true))
+    (bind incumbent (Utilities|Array|FindItem {sg('Workers')} original_Agent))
+    (if (or (< incumbent 0) (== incumbent {row('FinalWorkers')})) (return true))
+    ; Swapping only identical roles preserves the selected crew and every slot score.
+    (for i (range (Utilities|Array|Length wf_m_workerSlots))
+      (bind candidateRow (+ firstRow i))
+      (if (== incumbent {at(g('FinalWorkers'), 'candidateRow')})
+        {unpack('WorkerSlot', at('wf_m_workerSlots', 'i'), 'candidate')}
+        (if (and (== (Math|Conversions|ToInteger(Byte) original_educationRequirement)
+                       (Math|Conversions|ToInteger(Byte) candidate_educationRequirement))
+          (and (== original_bIsRequiredToRun candidate_bIsRequiredToRun)
+               (== original_bGivesBonus candidate_bGivesBonus)))
+          ; DSL binds are pure aliases; retain the displaced target before mutating its row.
+          {put('NormalizationDisplaced', row('FinalWorkers'))}
+          {set_item('FinalWorkers', g('RowIndex'), 'incumbent')}
+          {set_item('FinalWorkers', 'candidateRow', g('NormalizationDisplaced'))}
+          (return true))))
+    (return true))"""
 code["CaptureRow"] = f"""(fn CaptureRow ()
     (if (not (Utilities|Array|IsValidIndex {g('FinalWorkers')} {g('RowIndex')})) {fail('invalid_shape')})
     (bind building {at(sg('Buildings'), g('BuildingIndex'))})
@@ -244,9 +268,34 @@ code["AdvanceBuild"] = f"""(fn AdvanceBuild ()
     (if (not (and {sg('SnapshotValid')} {sg('CaptureDone')})) {fail('invalid_snapshot')})
     (if (== {g('Stage')} 6)
       (if (>= {g('BuildingIndex')} (Utilities|Array|Length {sg('Buildings')}))
-        {put('BuildingIndex', '0')} {put('Stage', '0')} (return true))
+        {put('BuildingIndex', '0')} {put('Stage', '7')} (return true))
       {add('BuildingStarts', '-1')} {add('BuildingHasAny', 'false')} {add('BuildingHasMovable', 'false')} {add('BuildingMissingRequired', 'false')} {add('BuildingNeedsFirstMinimum', 'false')}
       {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')} (return true))
+    (if (== {g('Stage')} 7)
+      (if (>= {g('BuildingIndex')} (Utilities|Array|Length {sg('Buildings')}))
+        {put('BuildingIndex', '0')} {put('SlotIndex', '0')} {put('RowIndex', '0')} {put('Stage', '0')} (return true))
+      (if (== {g('SlotIndex')} 0)
+        (bind school (Actor|GetComponentbyClass :self {at(sg('Buildings'), g('BuildingIndex'))} :ComponentClass "/Script/ProjectArco.School"))
+        {put('NormalizationExcluded', present('school'))})
+      {unpack('WorkerAssignment', at(sg('Workforces'), g('BuildingIndex')), 'protectionWf')}
+      (if (>= {g('SlotIndex')} (Utilities|Array|Length protectionWf_m_workerSlots))
+        {put('SlotIndex', '0')} {put('Stage', '8')} (return true))
+      (bind protectionRow (+ {g('RowIndex')} {g('SlotIndex')}))
+      (if (not (Utilities|Array|IsValidIndex {g('FinalWorkers')} protectionRow)) {fail('invalid_shape')})
+      ; Discover school/protected exclusions once per building, one slot per advance.
+      (if (not {g('NormalizationExcluded')})
+        {unpack('WorkerSlot', at('protectionWf_m_workerSlots', g('SlotIndex')), 'protectedSlot')}
+        (if (or (== {at(g('FinalWorkers'), 'protectionRow')} -2)
+          (and {present('protectedSlot_Agent')}
+            (< (Utilities|Array|FindItem {sg('Workers')} protectedSlot_Agent) 0)))
+          {put('NormalizationExcluded', 'true')}))
+      {put('SlotIndex', f'(+ {g("SlotIndex")} 1)')} (return true))
+    (if (== {g('Stage')} 8)
+      {unpack('WorkerAssignment', at(sg('Workforces'), g('BuildingIndex')), 'normalizeWf')}
+      (if (>= {g('SlotIndex')} (Utilities|Array|Length normalizeWf_m_workerSlots))
+        {put('BuildingIndex', f'(+ {g("BuildingIndex")} 1)')} {put('SlotIndex', '0')} {put('Stage', '7')} (return true))
+      (if (not (CallFunction|NormalizeRow)) (return false))
+      {put('RowIndex', f'(+ {g("RowIndex")} 1)')} {put('SlotIndex', f'(+ {g("SlotIndex")} 1)')} (return true))
     (if (== {g('Stage')} 0)
       (if (>= {g('BuildingIndex')} (Utilities|Array|Length {sg('Buildings')}))
         (if (!= {g('RowIndex')} (Utilities|Array|Length {g('FinalWorkers')})) {fail('invalid_shape')})

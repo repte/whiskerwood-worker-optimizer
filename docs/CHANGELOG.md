@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.3.3-performance-preview - 8 October 2026
+
+Performance and gameplay-layer visibility preview. [GitHub release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.3-performance-preview)
+and [packaged ZIP](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.3-performance-preview/WorkerOptimizer-v0.3.3-performance-preview.zip).
+The Workshop update is prepared, not submitted; its live version remains
+v0.3.1-preview. Public in-game acceptance remains pending.
+
+- Use the matrix's bounded work budget to process multiple edges per call.
+- Reduce redundant solver scans and omit unused empty columns without changing
+  assignment priorities or score arithmetic.
+- Skip strict priority levels without jobs, while retaining the builder reserve.
+- Prune impossible teacher-identity suffixes and losing teacherless combinations.
+- Add compiled throughput, exact-objective, cancellation and school-search regressions.
+- Retain the existing exact assignment approach; no approximate search, hybrid
+  solver or arbitrary candidate cap is introduced.
+- Measure six 1,000-worker compiled-editor planner cases at 5.61-14.55 seconds
+  on the test machine, with unchanged assignment hashes and checked objectives.
+  This is planner-call time, not a guarantee for the complete in-game operation.
+- Use the same native gameplay-HUD visibility checks as the Campfire Panel mod:
+  show assignment only in the gameplay HUD; hide in menus, with a hidden HUD,
+  and during loading or saving.
+  Simulation pause and end of day do not themselves hide the icon.
+- Keep an active assignment request intact when its icon is temporarily hidden.
+
+See [large-settlement verification](verification/2026-10-08-large-settlements.md)
+for measured results and the remaining in-game verification boundary. See the
+[release notes](releases/v0.3.3-performance-preview.md) for combined
+icon/package verification and publication status.
+
 ## 0.3.1-preview - 7 October 2026
 
 Workplace compatibility preview, now available on Steam Workshop. In-game acceptance remains pending.

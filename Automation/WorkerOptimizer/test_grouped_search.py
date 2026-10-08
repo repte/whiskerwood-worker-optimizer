@@ -3,6 +3,8 @@
 import itertools
 import time
 import unreal
+import toolset_registry
+from editor_toolset.toolsets.blueprint import BlueprintTools as BP
 
 
 def run():
@@ -122,7 +124,8 @@ def run():
         protected = sum(w >= 0 for w in layout.get_editor_property("FixedSlots"))
         payload = 8 * sum(len(obj.get_editor_property(name)) for obj, name in (
             (matrix, "Scores"), (matrix, "CachedScores"), (search, "CachedScores"),
-            (planner, "BaseScores"), (planner, "PassScores"), (planner, "Scores")))
+            (planner, "BaseScores"), (planner, "PassScores"), (planner, "Scores"),
+            (planner, "ImplicitScores")))
         unreal.log(f"WO_GROUPED_SEARCH_TIMING rows={rows} workers={len(workers)} columns={columns} buildings={len(buildings)} schools={schools} protected_slots={protected} reserve=0 strict={strict} limit={search.get_editor_property('StepWorkLimit')} candidates={search.get_editor_property('CandidatesEvaluated')} search_calls={advances} finite_driver_bound=1000000 host_seconds={elapsed:.3f} selected_float_array_payload_bytes={payload}; editor observation fixture, not shipping frame data; payload excludes allocator/capacity/VM overhead")
         return result
 
@@ -177,7 +180,20 @@ def run():
         result = finish(workers, 4, True)
         assert key(result, 4, True) == (1100, 139), result
         assert search.get_editor_property("CandidatesEvaluated") <= 20, "Prune teacherless choices once their optimistic coverage loses"
-        assert list(search.get_editor_property("Teachers")) == [-1] * 5
+        fixture = BP.create("/Game/WorkerOptimizerEditorTests", "BP_GroupedCoverageInputs", unreal.Object.static_class())
+        graph = BP.add_function_graph(fixture, "TeacherlessCandidate")
+        BP.add_object_function_param(graph, "Search", load("BP_PlanSearch"), True)
+        BP.compile_blueprint(fixture)
+        with toolset_registry.tool_raising_exceptions():
+            BP.write_graph_dsl(graph, '''(fn TeacherlessCandidate (Search)
+              (Utilities|Array|Clear (Class|BPPlanSearch|GetTeachers :self Search))
+              (for b (range (Utilities|Array|Length (Class|BPPlanSearch|GetPriorities :self Search)))
+                (Utilities|Array|Add (Class|BPPlanSearch|GetTeachers :self Search) -1))
+              (Class|BPPlanSearch|SetCompareTier :self Search :CompareTier 4)
+              (Class|BPPlanSearch|SetCompareIndex :self Search :CompareIndex 0)
+              (Class|BPPlanSearch|SetCoverageReady :self Search :CoverageReady false))''')
+            BP.compile_blueprint(fixture, warnings_as_errors=True)
+        unreal.new_object(fixture.generated_class()).call_method("TeacherlessCandidate", args=(search,))
         below = False
         for _ in range(5 * (len(buildings) + 1) + 1):
             below = search.call_method("CoverageBelowBest")

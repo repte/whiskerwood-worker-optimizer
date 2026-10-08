@@ -57,6 +57,7 @@ if "ProtectionSlots" not in existing:
 definitions = {
     "HasObject": ([("Object", unreal.Object.static_class())], True),
     "ResetSnapshot": ([], False),
+    "HasContextualCapacityOnly": ([("Building", building_class)], True),
     "RecordCompatibilityIssue": ([("Building", building_class)], True),
     "ObserveUnsupportedDefinition": ([("Building", building_class), ("MaxAgents", "int"), ("HouseTier", "int"), ("Found", "bool")], True),
     "ProtectBuilding": ([("Building", building_class)], False),
@@ -171,12 +172,27 @@ code["ResetSnapshot"] = f"""(fn ResetSnapshot ()
     {set_v('ProtectionComponentIndex', '0')} {set_v('ProtectionSlotIndex', '0')}
     (Variables|Default|SetProtectionBuilding))"""
 code["FinishBuildings"] = f"(fn FinishBuildings () (if {g('ProtectionActive')} (return)) {set_v('WorkerPhase', 'true')})"
+contextual_components = ("ConstructionSite", "House", "Bathhouse")
+contextual_capacity = [f'(CallFunction|HasObject :Object (Actor|GetComponentbyClass :self Building :ComponentClass "/Script/ProjectArco.{name}"))' for name in contextual_components]
+code["HasContextualCapacityOnly"] = f"""(fn HasContextualCapacityOnly (Building)
+    (if (not (CallFunction|HasObject :Object Building)) (return false))
+    (if (not (or {contextual_capacity[0]} (or {contextual_capacity[1]} {contextual_capacity[2]}))) (return false))
+    ; Resident/visitor/future construction capacity is not employment evidence.
+    ; A mixed actor with real worker slots must still report unsupported work.
+    (bind components (Actor|GetComponentsbyClass :self Building :ComponentClass "/Script/Engine.ActorComponent"))
+    (for component components
+      (bind (known workforce) (CallFunction|ReadComponent :component component))
+      (if known
+        {unpack('WorkerAssignment', 'workforce', 'wf')}
+        (if (> (Utilities|Array|Length wf_m_workerSlots) 0) (return false))))
+    (return true))"""
 code["RecordCompatibilityIssue"] = f"""(fn RecordCompatibilityIssue (Building)
     (if (not (CallFunction|HasObject :Object Building)) (return false))
     (if (or (not (Class|GridActor|GetIsPlayerOwned :self Building)) (<= (Class|GridActor|GetHealth :self Building) 0)) (return false))
     (if {contains('CompatibilityBuildings', 'Building')} (return true))
     (bind (known workforce) (CallFunction|ReadWorkplace :Building Building))
     (if known (return false))
+    (if (CallFunction|HasContextualCapacityOnly :Building Building) (return false))
     {unpack('PrefabInfo', '(Class|GridActor|GetPrefabInfo :self Building)', 'prefab')}
     (bind message (Utilities|String|Append
       :A (Utilities|String|Append :A "WorkerOptimizer: skipped unsupported workplace " :B (Utilities|String|ToString(Name) prefab_prefabKey))

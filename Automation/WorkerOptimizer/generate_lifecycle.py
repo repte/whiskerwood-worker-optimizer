@@ -30,7 +30,9 @@ definitions = {
     "InstallSession": [("InputController", load("BP_WorkerOptimizer")), ("InputBridge", load("BP_ActionBridge")), ("InputView", load("WBP_ActionContext"))],
     "ReleaseSession": [], "Shutdown": [],
     "CreateUI": [], "InstallUI": [("InputWidget", load("WBP_WorkerOptimizer")), ("InputConfig", load("BP_HotkeyConfig"))],
-    "PumpUI": [],
+    "PumpUI": [], "SyncGameplayVisibility": [],
+    "HudAllowsDisplay": [("InputHud", unreal.load_class(None, "/Script/ProjectArco.PlayHud")),
+                         ("InputController", unreal.load_class(None, "/Script/ProjectArco.PlayerController_Play"))],
     "ObserveReadiness": [("WorldReady", "bool"), ("PlayerReady", "bool")],
     "PumpLifecycle": [],
     "MeasureUI": [],
@@ -92,6 +94,12 @@ def factory_fail(reason):
 def trace(stage, api=None):
     return (f'(Class|ModAPI|LogMessage :self {api or g("API")} '
             f':Msg "WorkerOptimizer lifecycle: {stage}" :doPrependDate true)')
+
+
+def unpack(struct, value, prefix):
+    kind = "Utilities|Struct|Break" + struct
+    names = [prefix + str(pin.name) for pin in BP.get_node_type_pins(graphs["HudAllowsDisplay"], kind).output_pins]
+    return f"(bind ({' '.join(names)}) ({kind} {value}))"
 
 
 code = {}
@@ -280,9 +288,40 @@ code["CreateUI"] = f"""(fn CreateUI ()
     (if (not {present('widget')}) {fail('widget_creation_failed')})
     (bind installed (CallFunction|InstallUI :InputWidget widget :InputConfig preferences))
     (if (not installed) (Widget|RemovefromParent :self widget) (return false))
+    (CallFunction|SyncGameplayVisibility)
     ({add_viewport} :self widget :ZOrder 30)
     {trace('ui_added')} (return true))"""
+code["HudAllowsDisplay"] = f"""(fn HudAllowsDisplay (InputHud InputController)
+    (if (or (not {present('InputHud')}) (not {present('InputController')})) (return false))
+    (if (not (Class|PlayHud|GetMUiHasFadedIn :self InputHud)) (return false))
+    {unpack('ArcoPlayerState', '(Class|PlayerControllerPlay|GetMState :self InputController)', 'p_')}
+    (if (or {present('p_activeArcoView')} (or (not p_m_showHud) (or p_m_dev_hideAllHud p_m_showReplayMenu))) (return false))
+    {unpack('HudState', '(Class|PlayHud|GetMHudState :self InputHud)', 'h_')}
+    (if h_showSaving (return false))
+    {unpack('VisibilityToggles', 'h_sectionVisibilities', 'v_')}
+    (return v_showHudRoot))"""
+hide_ui = invoke('UI', 'ApplyGameplayVisibility', ':Visible false')
+code["SyncGameplayVisibility"] = f"""(fn SyncGameplayVisibility ()
+    (if (not {present(g('UI'))}) (return false))
+    (if (or {g('ShuttingDown')} (not {g('Ready')})) {hide_ui} (return false))
+    (bind mode (Utilities|Casting|CastToProjectArcoGameModeBase :Object (Game|GetGameMode))
+      (:then
+        (bind phase (Class|ProjectArcoGameModeBase|CurrentInitPhase :self mode))
+        (if (not (Utilities|Enum|Equal(Enum) :A phase)) {hide_ui} (return false))
+        (bind (found systems) (Class|ArcoSystems|GetArcoSys))
+        (if (or (not found) (not {present('systems')})) {hide_ui} (return false))
+        (if (not (Class|ArcoSystems|IsLive :self systems)) {hide_ui} (return false))
+        (bind player (Utilities|Casting|CastToPlayerController_Play :Object (Game|GetPlayerController :PlayerIndex 0))
+          (:then
+            (bind visible (CallFunction|HudAllowsDisplay
+              :InputHud (Class|PlayerControllerPlay|GetMPlayHud :self player) :InputController player))
+            {invoke('UI', 'ApplyGameplayVisibility', ':Visible visible')}
+            (return visible))
+          (:CastFailed {hide_ui} (return false))))
+      (:CastFailed {hide_ui} (return false))))"""
 code["PumpUI"] = f"""(fn PumpUI ()
+    (bind visible (CallFunction|SyncGameplayVisibility))
+    (if (not visible) (return false))
     (if (or {g('ShuttingDown')} (not {g('Ready')})) (return false))
     (if (or (not {present(g('UI'))}) (not {present(g('Hotkey'))})) (return false))
     (bind capturing {invoke('UI', 'IsCapturing')})
@@ -342,6 +381,7 @@ if MANUAL_ONLY:
     code["PollAutomatic"] = "(fn PollAutomatic () (return false))"
     code["PumpLifecycle"] = code["PumpLifecycle"].replace("(CallFunction|PollAutomatic)", "")
     code["PumpUI"] = f"""(fn PumpUI ()
+        (CallFunction|SyncGameplayVisibility)
         (if (or {g('ShuttingDown')} (not {g('Ready')})) (return false))
         (bind available {present(g('UI'))}) (return available))"""
 
@@ -371,7 +411,7 @@ with toolset_registry.tool_raising_exceptions():
         unreal.log("WO_LIFECYCLE_WRITE " + name)
         clear_generated_body(graphs[name])
         BP.write_graph_dsl(graphs[name], source)
-        if name == "PumpLifecycle":
+        if name in ("PumpLifecycle", "SyncGameplayVisibility"):
             # The DSL caches wildcard pin types. Set the enum constant only after
             # connecting the typed phase input, rather than wiring a string literal.
             comparisons = [n for n in BP.get_node_infos(BP.find_nodes(graphs[name]))

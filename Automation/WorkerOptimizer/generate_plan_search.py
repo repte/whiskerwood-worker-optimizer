@@ -19,7 +19,7 @@ for name, cls in list((name, load(cls)) for name, cls in refs.items()) + [("Cont
     if name not in existing:
         BP.add_object_variable(bp, name, cls)
 for kind, names in {
-    "bool": "SearchActive SearchDone SearchSucceeded HasBest ChoosingWorker PolicyReady Strict CacheReady SearchSetupActive EquivalentDone EquivalentResult CoverageReady ComparisonReady CandidateWins",
+    "bool": "SearchActive SearchDone SearchSucceeded HasBest ChoosingWorker PolicyReady Strict CacheReady SearchSetupActive EquivalentDone EquivalentResult CoverageReady ComparisonReady CandidateWins BestFullCoverage",
     "int": "State BuildingIndex ChoiceWorker CurrentSchool CandidatesEvaluated CandidatesPruned CandidateTotal BestTotal RequestedReserve StepWorkLimit LastStepWork InitCursor QualityCursor ChoiceStage ChoiceRow EquivalentIndex CandidateStage CandidateIndex DuplicateIndex CandidateTeacher CompareTier CompareIndex SelectionIndex",
     "float": "CandidateWeighted BestWeighted BestBuilderQuality",
     "name": "FailureCode",
@@ -96,8 +96,9 @@ def fail(reason):
     return f'(CallFunction|FailSearch :Reason "{reason}") (return false)'
 
 
-def next_candidate():
-    index = f'(- {count(g("SchoolBuildings"))} 1)'
+def next_candidate(index=None):
+    if index is None:
+        index = f'(- {count(g("SchoolBuildings"))} 1)'
     return f"{put('SelectionIndex', index)} {put('State', '4')} (return true)"
 
 
@@ -120,7 +121,7 @@ code["FailSearch"] = f"""(fn FailSearch (Reason)
     (Utilities|Array|Clear {g('BestAssignment')}) (Utilities|Array|Clear {g('BestTeachers')}) (return false))"""
 code["BeginSearch"] = f"""(fn BeginSearch (InputLayout InputMatrix InputPlanner InputScorer InputSettings InputContext)
     (if {g('SearchActive')} (return false))
-    {clear} {put('SearchDone', 'false')} {put('SearchSucceeded', 'false')} {put('HasBest', 'false')}
+    {clear} {put('SearchDone', 'false')} {put('SearchSucceeded', 'false')} {put('HasBest', 'false')} {put('BestFullCoverage', 'false')}
     {put('ChoosingWorker', 'false')} {put('PolicyReady', 'false')} {put('CacheReady', 'false')} {put('FailureCode', '"None"')}
     {put('State', '0')} {put('BuildingIndex', '0')} {put('CandidatesEvaluated', '0')} {put('CandidatesPruned', '0')}
     {put('RequestedReserve', '0')} {put('BestBuilderQuality', '0.0')} (Utilities|Array|Clear {g('BuilderQuality')})
@@ -197,12 +198,19 @@ code["HasEquivalentChoice"] = f"""(fn HasEquivalentChoice (Column)
       (if same {put('EquivalentDone', 'true')} {put('EquivalentResult', 'true')} (return true)))
     {put('EquivalentIndex', f'(+ {g("EquivalentIndex")} 1)')} (return false))"""
 
+# A repeated identity invalidates its whole suffix; clear one cursor per step.
+# Teacherless choices are last and cannot improve an already complete coverage.
 code["AdvanceSelection"] = f"""(fn AdvanceSelection ()
+    (if (and (== {g('CandidateStage')} 3) (< {g('DuplicateIndex')} {count(g('SchoolBuildings'))}))
+      {set_a('ChoiceCursors', g('DuplicateIndex'), '0')}
+      {put('DuplicateIndex', f'(+ {g("DuplicateIndex")} 1)')} (return true))
     (if (>= {g('SelectionIndex')} 0)
       (bind index {g('SelectionIndex')})
       {set_a('ChoiceCursors', 'index', f'(+ {at(g("ChoiceCursors"), "index")} 1)')}
       (if (< {at(g('ChoiceCursors'), 'index')} {at(g('ChoiceCounts'), 'index')})
-        {put('State', '1')} {put('CandidateStage', '0')} {put('CandidateIndex', '0')} (return true))
+        (bind choice (+ {at(g('ChoiceStarts'), 'index')} {at(g('ChoiceCursors'), 'index')}))
+        (if (not (and {g('BestFullCoverage')} (< {at(g('Choices'), 'choice')} 0)))
+          {put('State', '1')} {put('CandidateStage', '0')} {put('CandidateIndex', '0')} (return true)))
       {set_a('ChoiceCursors', 'index', '0')} {put('SelectionIndex', '(- index 1)')} (return true))
     (if (not {g('HasBest')}) {fail('no_feasible_plan')})
     {put('SearchActive', 'false')} {put('SearchDone', 'true')} {put('SearchSucceeded', 'true')} (return true))"""
@@ -238,7 +246,9 @@ code["BeginCandidate"] = f"""(fn BeginCandidate ()
     (if (== {g('CandidateStage')} 1)
       (if (< {g('DuplicateIndex')} {count(g('UsedTeachers'))})
         (if (== {at(g('UsedTeachers'), g('DuplicateIndex'))} {g('CandidateTeacher')})
-          {put('CandidatesPruned', f'(+ {g("CandidatesPruned")} 1)')} {next_candidate()})
+          {put('CandidatesPruned', f'(+ {g("CandidatesPruned")} 1)')}
+          {put('DuplicateIndex', f'(+ {g("CandidateIndex")} 1)')} {put('CandidateStage', '3')}
+          {next_candidate(g('CandidateIndex'))})
         {put('DuplicateIndex', f'(+ {g("DuplicateIndex")} 1)')} (return true))
       {add('UsedTeachers', g('CandidateTeacher'))} {put('CandidateIndex', f'(+ {g("CandidateIndex")} 1)')} {put('CandidateStage', '0')} (return true))
     (bind below (CallFunction|CoverageBelowBest))
@@ -354,12 +364,14 @@ code["AdvanceSearch"] = f"""(fn AdvanceSearch ()
           {put('BestCoverage', g('CandidateCoverage'))} {put('BestCounts', g('CandidateCounts'))}
           {put('BestScores', g('CandidateScores'))} {put('BestTotal', g('CandidateTotal'))}
           {put('BestWeighted', g('CandidateWeighted'))}
-          {put('CandidateIndex', '0')} {put('State', '10')} (return true))
+          {put('BestFullCoverage', 'true')} {put('CandidateIndex', '0')} {put('State', '10')} (return true))
         {put('CandidatesEvaluated', f'(+ {g("CandidatesEvaluated")} 1)')} {next_candidate()})
       (:10
-        (if (< {g('CandidateIndex')} {count(g('SchoolBuildings'))})
-          (bind building {at(g('SchoolBuildings'), g('CandidateIndex'))})
-          {set_a('BestTeachers', 'building', at(prop('Planner', 'PlanAssignment'), at(prop('Layout', 'BuildingStarts'), 'building')))}
+        (if (< {g('CandidateIndex')} {count(g('BestCoverage'))})
+          (if (< {g('CandidateIndex')} {count(g('SchoolBuildings'))})
+            (bind building {at(g('SchoolBuildings'), g('CandidateIndex'))})
+            {set_a('BestTeachers', 'building', at(prop('Planner', 'PlanAssignment'), at(prop('Layout', 'BuildingStarts'), 'building')))})
+          (if (not {at(g('BestCoverage'), g('CandidateIndex'))}) {put('BestFullCoverage', 'false')})
           {put('CandidateIndex', f'(+ {g("CandidateIndex")} 1)')} (return true))
         {put('HasBest', 'true')} {put('CandidatesEvaluated', f'(+ {g("CandidatesEvaluated")} 1)')} {next_candidate()})
       (:11
@@ -409,3 +421,4 @@ with toolset_registry.tool_raising_exceptions():
 unreal.log("WO_PLAN_SEARCH_GENERATED")
 exec(Path(__file__).with_name("test_plan_search.py").read_text(encoding="utf-8"))
 exec(Path(__file__).with_name("test_grouped_search.py").read_text(encoding="utf-8"))
+exec(Path(__file__).with_name("test_search_pruning.py").read_text(encoding="utf-8"))

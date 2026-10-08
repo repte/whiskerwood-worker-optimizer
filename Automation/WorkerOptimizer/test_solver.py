@@ -18,19 +18,23 @@ def solve(matrix, columns=None, max_steps=None, allowed_empty=None):
     if allowed_empty is not None:
         solver.call_method("RestrictDummies", args=(allowed_empty,))
     advances = 0
+    primitive_work = 0
     width = rows + cols
     limit = solver.get_editor_property("StepWorkLimit")
     primitive_bound = rows * cols + rows * (rows + 1) * (3 * width + 10) + cols + 3 * rows + 20
-    for _ in range(math.ceil(primitive_bound / limit) + 1):
+    # A bounded phase may yield with a partially used budget.
+    for _ in range(primitive_bound + 1):
         if solver.get_editor_property("Done"):
             break
         solver.call_method("Advance")
         assert 0 < solver.get_editor_property("LastStepWork") <= limit
+        primitive_work += int(solver.get_editor_property("LastStepWork"))
+        assert primitive_work <= primitive_bound, "Solver exceeded its primitive work bound"
         advances += 1
     assert solver.get_editor_property("Done"), "Solver failed to finish within bounded primitive steps"
     assert solver.get_editor_property("Succeeded"), "Solver rejected valid matrix"
-    tie_bound = math.ceil((rows * cols + rows + (max_steps or 0) * (3 * width + 10) + cols + rows + 20) / limit)
-    assert max_steps is None or advances <= tie_bound, f"Equal-score matching wasted width scans: {advances} > {tie_bound}"
+    tie_bound = rows * cols + rows + (max_steps or 0) * (3 * width + 10) + cols + rows + 20
+    assert max_steps is None or primitive_work <= tie_bound, f"Equal-score matching wasted width scans: {primitive_work} > {tie_bound}"
     result = list(solver.get_editor_property("Assignment"))
     assert len(result) == rows
     chosen = [col for col in result if col >= 0]

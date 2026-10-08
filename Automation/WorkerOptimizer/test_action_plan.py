@@ -261,6 +261,59 @@ def run():
         assert list(layout.get_editor_property("ColumnActors")) == []
         assert list(layout.get_editor_property("FixedSlots")) == []
         assert build([]) == []
+        # Protection discovery visits one slot per advance before normalization.
+        large_crew = [spawn("Prototype_Agent") for _ in range(24)]
+        for i, worker in enumerate(large_crew):
+            characteristics = worker.get_editor_property("m_characteristics")
+            assert characteristics.import_text(f'(ID={1700 + i},guild="large{i}")')
+            put(worker, "m_characteristics", characteristics)
+        large, _ = building(1308, "Industry", large_crew, [False] * len(large_crew))
+        capture([large], large_crew, [large] * len(large_crew))
+        assert plan.call_method("BeginBuild", args=(snapshot, list(range(len(large_crew)))))[-1]
+        for _ in range(100):
+            if plan.get_editor_property("Stage") == 7:
+                break
+            plan.call_method("AdvanceBuild")
+        for i in range(len(large_crew)):
+            assert plan.get_editor_property("Stage") == 7
+            assert plan.get_editor_property("SlotIndex") == i
+            assert plan.get_editor_property("RowIndex") == 0, "Protection discovery must be sliced before per-row normalization"
+            plan.call_method("AdvanceBuild")
+        for _ in range(1000):
+            if plan.get_editor_property("BuildDone"):
+                break
+            plan.call_method("AdvanceBuild")
+        assert plan.get_editor_property("BuildDone") and plan.get_editor_property("BuildSucceeded")
+        assert not plan.get_editor_property("ActionWorkers"), "A larger unchanged ordinary crew remains a no-op"
+        # Equivalent positions in an ordinary building retain chosen incumbents.
+        stable, stable_component = building(1306, "Industry", [workers[0], workers[1], None], [False, False, False])
+        capture([stable], workers, [stable, stable, None, None])
+        stable_before = stable_component.get_editor_property("m_workers").export_text()
+        assert build([1, -1, 0]) == [], "Equivalent slot permutation must retain incumbents without fire/hire"
+        assert list(plan.get_editor_property("FinalWorkers")) == [0, 1, -1]
+        assert build([3, -1, 0]) == [(0, 2, 3, False), (0, 1, 1, True)], "Keep the chosen team while retaining its existing worker"
+        assert list(plan.get_editor_property("FinalWorkers")) == [0, -1, 3]
+        assert stable_before == stable_component.get_editor_property("m_workers").export_text()
+        for difference in ("bGivesBonus=True", "bIsRequiredToRun=True", "educationRequirement=Educated"):
+            changed_wf = stable_component.get_editor_property("m_workers")
+            assert changed_wf.import_text(stable_before)
+            changed_slots = list(changed_wf.get_editor_property("m_workerSlots"))
+            assert changed_slots[1].import_text("(" + difference + ")")
+            put(changed_wf, "m_workerSlots", changed_slots)
+            put(stable_component, "m_workers", changed_wf)
+            capture([stable], workers, [stable, stable, None, None])
+            build([1, 0, -1], success=difference != "educationRequirement=Educated")
+            assert list(plan.get_editor_property("FinalWorkers")) == [1, 0, -1], difference
+        restored_wf = stable_component.get_editor_property("m_workers")
+        assert restored_wf.import_text(stable_before)
+        put(stable_component, "m_workers", restored_wf)
+        capture([stable], [workers[0], workers[2], workers[3]], [stable, None, None])
+        build([2, -2, 0])
+        assert list(plan.get_editor_property("FinalWorkers")) == [2, -2, 0], "Protected crews must remain untouched by normalization"
+        stable_school, _ = building(1307, "School", [workers[0], workers[1], workers[3]], [True, False, False])
+        capture([stable_school], workers, [stable_school, stable_school, None, stable_school])
+        assert build([0, 3, 1]), "School student roles must retain their planned slot indices"
+        assert list(plan.get_editor_property("FinalWorkers")) == [0, 3, 1]
         plan.call_method("AdvanceBuild")
         assert plan.get_editor_property("BuildSucceeded")
         unreal.log("WO_ACTION_PLAN_TESTS_PASS: snapshot layout through constrained planner, full-plan validation, no-ops/swaps, ordered fires/required/optional hires, locked and unavoidable partial crews, planned school dependencies, malformed/stale/duplicate rejection, read-only layout/queue construction and serial-runner integration through explicit observations")
