@@ -7,11 +7,30 @@ import toolset_registry
 from editor_toolset.toolsets.blueprint import BlueprintTools as BP, ContainerType
 from planner_cost_dsl import IMPLICIT_VARIABLES, implicit_row_setup, implicit_score
 from solver_relaxation_bound_dsl import bound_setup, bounded_edge
+from solver_integer_u_dsl import (
+    INTEGER_U_VARIABLES, sources as integer_u_sources,
+    initialize_reset as integer_u_initialize_reset,
+    advance_dispatch as integer_u_advance_dispatch,
+    state4_fence as integer_u_state4_fence, state4_complete as integer_u_state4_complete,
+)
+from solver_integer_minv_dsl import (
+    INTEGER_MINV_VARIABLES, sources as integer_minv_sources,
+    begin_scan as integer_minv_begin_scan, observe_scan as integer_minv_observe_scan,
+    finish_scan as integer_minv_finish_scan, load_value as integer_minv_load_value,
+    store_improvement as integer_minv_store_improvement,
+    observe_dummy as integer_minv_observe_dummy,
+    advance_dispatch as integer_minv_advance_dispatch,
+    prefix_step as integer_minv_prefix_step,
+)
 from solver_native_relaxation_dsl import (
     NATIVE_VARIABLES, available as native_available, initialize_reset as native_initialize_reset,
     begin_row_reset as native_begin_row_reset, collect_free as native_collect_free,
     finish_free_cache as native_finish_free_cache, potential_begin as native_potential_begin,
+    potential_batch_finish as native_potential_batch_finish,
     potential_finish as native_potential_finish, potential_item as native_potential_item,
+    dummy_relax_item as native_dummy_relax_item, dummy_relax_finish as native_dummy_relax_finish,
+    potential_dummy_begin as native_potential_dummy_begin,
+    enable_dead_labels as native_enable_dead_labels, mark_dead_label as native_mark_dead_label,
     candidate_setup as native_candidate_setup, graph as native_graph,
 )
 
@@ -24,7 +43,7 @@ if bp is None:
 
 variables = {
     "Done": ("bool", False), "Succeeded": ("bool", False), "DummiesRestricted": ("bool", False),
-    "SolverState": ("int", False), "Cursor": ("int", False),
+    "SolverState": ("int", False), "Cursor": ("int", False), "PotentialEnd": ("int", False),
     "StepWorkLimit": ("int", False), "LastStepWork": ("int", False),
     "Rows": ("int", False), "Cols": ("int", False), "Width": ("int", False),
     "DummyCount": ("int", False),
@@ -34,7 +53,7 @@ variables = {
     "RowScoreOffset": ("int", False), "BestColumnFree": ("bool", False),
     "NonpositiveV": ("bool", False), "ZeroLabelBound": ("bool", False), "FirstFreeColumn": ("int", False),
     "RelaxationBoundEnabled": ("bool", False), "RelaxationLowerBound": ("float", False),
-    "ValidationIndex": ("int", False), "ValidationEnd": ("int", False),
+    "ValidationIndex": ("int", False), "ValidationEnd": ("int", False), "RelaxationEnd": ("int", False),
     "Scores": ("float", True), "U": ("float", True), "V": ("float", True),
     "MinV": ("float", True), "P": ("int", True), "Way": ("int", True),
     "UsedColumns": ("int", True),
@@ -43,6 +62,8 @@ variables = {
 }
 variables.update(IMPLICIT_VARIABLES)
 variables.update(NATIVE_VARIABLES)
+variables.update(INTEGER_U_VARIABLES)
+variables.update(INTEGER_MINV_VARIABLES)
 existing = BP.list_variables(bp)
 for name, (kind, array) in variables.items():
     if name not in existing:
@@ -51,7 +72,9 @@ BP.set_variable_instance_editable(bp, "StepWorkLimit", True)
 
 graphs = {}
 existing_graphs = {str(g.get_name()) for g in BP.list_graphs(bp)}
-for name in ("BeginRow", "Initialize", "InitializeImplicitFirstPass", "RestrictDummies", "AdvanceRelaxation", "AdvanceNativeRelaxation", "AdvancePotentials", "Advance"):
+for name in ("BeginRow", "Initialize", "InitializeImplicitFirstPass", "EnableNativeDeadLabels", "RestrictDummies", "AdvanceRelaxation", "AdvanceNativeRelaxation", "AdvancePotentials", "Advance",
+             "IntegerUReset", "IntegerUCheckValue", "IntegerUPrepareRow", "IntegerUFlush", "IntegerUAdvancePotentials", "IntegerUDeferredPotentials",
+             "IntegerMinReset", "IntegerMinPrepare", "IntegerMinFlush"):
     graphs[name] = BP.get_graph(bp, name) if name in existing_graphs else BP.add_function_graph(bp, name)
 if "Initialize" not in existing_graphs:
     BP.add_function_param(graphs["Initialize"], "IncomingScores", "float", True, ContainerType.ARRAY)
@@ -107,8 +130,22 @@ begin = f"""
   {put('Cursor', '0')} {put('SolverState', '3')})
 """
 
+enable_native_dead_labels = native_enable_dead_labels(get, put, node('Loge'))
+integer_u_graphs = integer_u_sources(floor64_node=node('FloortoInteger64'), call_function=call, defer_v=True)
+integer_u_reset = integer_u_graphs['IntegerUReset']
+integer_u_check_value = integer_u_graphs['IntegerUCheckValue']
+integer_u_prepare_row = integer_u_graphs['IntegerUPrepareRow']
+integer_u_flush = integer_u_graphs['IntegerUFlush']
+integer_u_advance_potentials = integer_u_graphs['IntegerUAdvancePotentials']
+integer_minv_graphs = integer_minv_sources(get, put, at, set_at, node('FloortoInteger64'))
+integer_minv_reset = integer_minv_graphs['IntegerMinReset']
+integer_minv_prepare = integer_minv_graphs['IntegerMinPrepare']
+integer_minv_flush = integer_minv_graphs['IntegerMinFlush']
+
 initialize = f"""
 (fn Initialize (IncomingScores RowCount ColumnCount)
+  {call('IntegerMinReset')}
+  {integer_u_initialize_reset(call)}
   {put('Done', 'true')}
   {put('Succeeded', 'false')}
   {put('DummiesRestricted', 'false')}
@@ -154,6 +191,8 @@ implicit_shape_checks = "\n".join(
     for name in implicit_row_arrays)
 initialize_implicit = f"""
 (fn InitializeImplicitFirstPass (RowCount ColumnCount)
+  {call('IntegerMinReset')}
+  {integer_u_initialize_reset(call)}
   {put('Done', 'true')} {put('Succeeded', 'false')}
   {put('ImplicitFirstPass', 'false')} {put('DummiesRestricted', 'true')}
   {native_initialize_reset(get, put)}
@@ -263,12 +302,13 @@ relaxation_bound_setup = bound_setup(get, put, at)
 bounded_relax_edge = bounded_edge(get, put, at, relax_cost, relax_choose)
 implicit_bounded_relax_edge = bounded_edge(get, put, at, implicit_relax_cost, relax_choose)
 native_free_item = native_collect_free(get, put, at)
+integer_minv_scan_item = integer_minv_observe_scan(get, put, at, set_at, node('FloortoInteger64'))
 
 
-def cached_relaxation_edge(cost):
+def cached_relaxation_edge(cost, scan_item=''):
     return f"""
   (bind j {get('Cursor')})
-  (if (not {at('Used', 'j')}) {cost} {native_free_item} {relax_choose})
+  (if (not {at('Used', 'j')}) {cost} {scan_item} {native_dummy_relax_item(get, put)} {native_free_item} {relax_choose})
   {put('Cursor', f'(+ {get("Cursor")} 1)')}
 """
 
@@ -281,8 +321,8 @@ cached_certified_relax_edge = cached_relaxation_edge(f"""
 implicit_cached_certified_relax_edge = cached_relaxation_edge(f"""
   (if (== {at('MinV', 'j')} 0.0) {put('Cur', at('MinV', 'j'))} (else {implicit_relax_cost}))
 """)
-cached_bounded_relax_edge = bounded_edge(get, put, at, relax_cost, native_free_item + relax_choose)
-implicit_cached_bounded_relax_edge = bounded_edge(get, put, at, implicit_relax_cost, native_free_item + relax_choose)
+cached_bounded_relax_edge = bounded_edge(get, put, at, relax_cost, native_dummy_relax_item(get, put) + native_free_item + relax_choose)
+implicit_cached_bounded_relax_edge = bounded_edge(get, put, at, implicit_relax_cost, native_dummy_relax_item(get, put) + native_free_item + relax_choose)
 update_potential = f"""
   (bind j {get('Cursor')})
   (if {at('Used', 'j')}
@@ -291,6 +331,19 @@ update_potential = f"""
     (else {set_at('MinV', 'j', f'(- {at("MinV", "j")} {get("Delta")})')}))
   {put('Cursor', f'(+ {get("Cursor")} 1)')}
 """
+def potential_cell_dsl(include_u=True, defer_v=False):
+    u_update = f"""(bind potential_row {at('P', 'j')})
+      {set_at('U', 'potential_row', f'(+ {at("U", "potential_row")} {get("Delta")})')}""" if include_u else ''
+    v_update = set_at('V', 'j', f'(- {at("V", "j")} {get("Delta")})')
+    if defer_v:
+        v_update = f'(if (== j 0) {v_update})'
+    return f"""
+  (if {at('Used', 'j')}
+    {u_update}
+    {v_update}
+    (else {set_at('MinV', 'j', f'(- {at("MinV", "j")} {get("Delta")})')}))
+"""
+potential_cell = potential_cell_dsl()
 relax_done = f"{put('Cursor', '0')} {put('SolverState', '6')}"
 potentials_done = f"""{put('J0', get('J1'))} {put('SolverState', f'(select (== {at("P", get("J1"))} 0) 7 4)')}"""
 invalidate_nonpositive = f"""
@@ -321,9 +374,19 @@ first_row_shortcut = f"""
 phase_work = f'(select (< (+ (- {get("Width")} {get("Cursor")}) 2) {get("StepWorkLimit")}) (+ (- {get("Width")} {get("Cursor")}) 2) {get("StepWorkLimit")})'
 def relaxation_dispatch(regular, certified, bounded, implicit_regular, implicit_certified, implicit_bounded, finish):
     def loop(edge):
+        source = edge.strip()
+        prefix = f"(bind j {get('Cursor')})"
+        suffix = put('Cursor', f'(+ {get("Cursor")} 1)')
+        assert source.startswith(prefix) and source.endswith(suffix)
+        body = source[len(prefix):-len(suffix)].strip()
+        assert get('Cursor') not in body, 'Indexed edges must not depend on a mutating Cursor'
         return f"""
-        (for work (range {get('LastStepWork')})
-          (if (<= {get('Cursor')} {get('Width')}) {edge} (else {finish})))
+        (if (> {get('LastStepWork')} 0)
+          {put('RelaxationEnd', f'(select (< (+ {get("Cursor")} {get("LastStepWork")}) (+ {get("Width")} 1)) (+ {get("Cursor")} {get("LastStepWork")}) (+ {get("Width")} 1))')}
+          (for j (range {get('Cursor')} {get('RelaxationEnd')}) {body})
+          (if (> {get('LastStepWork')} (- {get('RelaxationEnd')} {get('Cursor')}))
+            {put('Cursor', get('RelaxationEnd'))} {finish}
+            (else {put('Cursor', get('RelaxationEnd'))})))
         """
 
     def mode(plain, zero, lower):
@@ -341,22 +404,66 @@ def relaxation_dispatch(regular, certified, bounded, implicit_regular, implicit_
 ordinary_relaxation = relaxation_dispatch(
     relax_edge, certified_relax_edge, bounded_relax_edge,
     implicit_relax_edge, implicit_certified_relax_edge, implicit_bounded_relax_edge, relax_done)
+cached_relaxation_finish = native_dummy_relax_finish(get, put) + native_finish_free_cache(get, put) + integer_minv_finish_scan(get, put) + relax_done
 cached_relaxation = relaxation_dispatch(
     cached_relax_edge, cached_certified_relax_edge, cached_bounded_relax_edge,
     implicit_cached_relax_edge, implicit_cached_certified_relax_edge, implicit_cached_bounded_relax_edge,
-    native_finish_free_cache(get, put) + relax_done)
+    cached_relaxation_finish)
+gathering_relaxation = relaxation_dispatch(
+    cached_relaxation_edge(relax_cost, integer_minv_scan_item),
+    cached_relaxation_edge(f"(if (== {at('MinV', 'j')} 0.0) {put('Cur', at('MinV', 'j'))} (else {relax_cost}))", integer_minv_scan_item),
+    bounded_edge(get, put, at, relax_cost, integer_minv_scan_item + native_dummy_relax_item(get, put) + native_free_item + relax_choose),
+    cached_relaxation_edge(implicit_relax_cost, integer_minv_scan_item),
+    cached_relaxation_edge(f"(if (== {at('MinV', 'j')} 0.0) {put('Cur', at('MinV', 'j'))} (else {implicit_relax_cost}))", integer_minv_scan_item),
+    bounded_edge(get, put, at, implicit_relax_cost, integer_minv_scan_item + native_dummy_relax_item(get, put) + native_free_item + relax_choose),
+    cached_relaxation_finish)
 advance_relaxation = f"""
 (fn AdvanceRelaxation ()
   ; Include the phase-exit step without dispatching every cell through SwitchInt.
+  {integer_minv_begin_scan(get, put)}
   {put('LastStepWork', phase_work)}
-  (if {native_available(get)} {cached_relaxation} (else {ordinary_relaxation})))
+  (if {native_available(get)}
+    (if {get('IntegerMinGathering')} {gathering_relaxation} (else {cached_relaxation}))
+    (else {ordinary_relaxation})))
 """
+def integer_minv_cost(load):
+    return f'''
+      {load}
+      {put('Cur', f'(- (- {get("Cur")} {get("RowPotential")}) {at("V", "j")})')}
+      {integer_minv_load_value(get, put, at, 'j')}
+      (if (< {get('Cur')} {get('IntegerMinValue')})
+        {integer_minv_store_improvement(get, put, at, set_at, node('FloortoInteger64'))}
+        (if (== {get('IntegerMinFlushCursor')} 0) {set_at('Way', 'j', get('J0'))})
+        (else {put('Cur', get('IntegerMinValue'))}))
+    '''
+
+
+integer_minv_dense_cost = integer_minv_cost(f"{put('Cur', negative_score)}")
+integer_minv_implicit_cost = integer_minv_cost(implicit_load_cost)
+integer_minv_native_minimum = f'''
+  (if {get('IntegerMinActive')}
+    {put('IntegerMinRawMinimum', get('NativeMinimum'))}
+    {put('IntegerMinIndex', f'({node("FindItem")} :TargetArray {get("MinV")} :ItemToFind {get("IntegerMinRawMinimum")})')}
+    {integer_minv_load_value(get, put, at, get('IntegerMinIndex'), 'NativeMinimum')})
+'''
 advance_native_relaxation = native_graph(
-    get, put, at, set_at, relax_cost, implicit_relax_cost, relax_done,
-    sort_node=node('SortFloatArray'), find_node=node('FindItem'))
-advance_potentials = f"""
-(fn AdvancePotentials ()
+    get, put, at, set_at,
+    f"(if {get('IntegerMinActive')} {integer_minv_dense_cost} (else {relax_cost}))",
+    f"(if {get('IntegerMinActive')} {integer_minv_implicit_cost} (else {implicit_relax_cost}))",
+    relax_done, sort_node=node('SortFloatArray'), find_node=node('FindItem'),
+    integer_minv={'load': lambda index, target='IntegerMinValue': integer_minv_load_value(get, put, at, index, target),
+                  'observe_dummy': integer_minv_observe_dummy(get, put),
+                  'minimum': integer_minv_native_minimum})
+def potential_graph(name, include_u=True, defer_v=False):
+    terminal_u = set_at('U', at('P', 'j'), f'(+ {at("U", at("P", "j"))} {get("Delta")})') if include_u else ''
+    terminal_v = set_at('V', 'j', f'(- {at("V", "j")} {get("Delta")})')
+    if defer_v:
+        terminal_v = f'(if (== j 0) {terminal_v})'
+    return f"""
+(fn {name} ()
   (if (== {get('Delta')} 0.0)
+    {put('PotentialDummySkip', 'false')}
+    {put('PotentialFreeFixedColumn', '0')}
     {put('LastStepWork', '1')}
     (if {native_available(get)} {native_potential_finish(get, put, at, zero_delta=True)})
     {potentials_done} (return))
@@ -365,29 +472,52 @@ advance_potentials = f"""
   ; A final augmentation only consumes Way/P; the next row overwrites MinV.
   ; Used columns own distinct matched rows, including the active row at zero.
   (if (== {at('P', get('J1'))} 0)
+    {put('PotentialDummySkip', 'false')}
+    {put('PotentialFreeFixedColumn', '0')}
     {put('NativeFreeValid', 'false')}
+    {put('UpperGlobalReady', 'false')} {put('UpperPrefixReady', 'false')}
     (bind count (Utilities|Array|Length {get('UsedColumns')}))
     (bind remaining (+ (- count {get('Cursor')}) 1))
     {put('LastStepWork', f'(select (< remaining {get("StepWorkLimit")}) remaining {get("StepWorkLimit")})')}
     (for work (range {get('LastStepWork')})
       (if (< {get('Cursor')} count)
         (bind j {at('UsedColumns', get('Cursor'))})
-        {set_at('U', at('P', 'j'), f'(+ {at("U", at("P", "j"))} {get("Delta")})')}
-        {set_at('V', 'j', f'(- {at("V", "j")} {get("Delta")})')}
+        {terminal_u}
+        {terminal_v}
         {put('Cursor', f'(+ {get("Cursor")} 1)')}
         (else {potentials_done})))
     (return))
+  {integer_minv_prefix_step(get, put, at, set_at, native_potential_begin(get, put), native_potential_dummy_begin(get, put)) if not include_u and defer_v else ''}
   {put('LastStepWork', phase_work)}
+  ; Keep the loop bound stable while preserving the separate phase-exit item.
+  {put('PotentialEnd', f'(select (< (+ {get("Cursor")} {get("LastStepWork")}) (+ {get("Width")} 1)) (+ {get("Cursor")} {get("LastStepWork")}) (+ {get("Width")} 1))')}
   (if {native_available(get)}
     {native_potential_begin(get, put)}
-    (for work (range {get('LastStepWork')})
-      (if (<= {get('Cursor')} {get('Width')}) {native_potential_item(get, put, at, set_at)}
-        (else {native_potential_finish(get, put, at)} {potentials_done})))
+    {native_potential_dummy_begin(get, put)}
+    ; A minimum already at the first free index stays first under subtraction.
+    (if (> {get('PotentialFreeFixedColumn')} 0)
+      (for j (range {get('Cursor')} {get('PotentialLoopEnd')})
+        {native_potential_item(get, put, at, set_at, collect=False, include_u=include_u, defer_v=defer_v)})
+      (else
+        (for j (range {get('Cursor')} {get('PotentialLoopEnd')})
+          {native_potential_item(get, put, at, set_at, include_u=include_u, defer_v=defer_v)})))
+    (if (< {get('PotentialLoopEnd')} {get('PotentialEnd')})
+      {put('NativeValue', at('MinV', f'(- {get("PotentialEnd")} 1)'))})
+    {native_potential_batch_finish(get, put, at)}
     (else
-      (for work (range {get('LastStepWork')})
-        (if (<= {get('Cursor')} {get('Width')}) {update_potential}
-          (else {potentials_done}))))))
+      (if (== {get('Cursor')} 0)
+        {put('PotentialFreeFixedColumn', '0')} {put('PotentialDummySkip', 'false')}
+        {put('NativeDummyBoundReady', 'false')}
+        {put('UpperGlobalReady', 'false')} {put('UpperPrefixReady', 'false')})
+      (for j (range {get('Cursor')} {get('PotentialEnd')}) {potential_cell_dsl(include_u, defer_v)})))
+  (if (< (- {get('PotentialEnd')} {get('Cursor')}) {get('LastStepWork')})
+    {put('Cursor', get('PotentialEnd'))}
+    (if {native_available(get)} {native_potential_finish(get, put, at)})
+    {potentials_done}
+    (else {put('Cursor', get('PotentialEnd'))})))
 """
+advance_potentials = potential_graph('AdvancePotentials')
+integer_u_deferred_potentials = potential_graph('IntegerUDeferredPotentials', include_u=False, defer_v=True)
 validate_row_minima = f"""
   (if (== column 1)
     {set_at('RowMinCost', 'row', 'cost')} {set_at('RowMinColumn', 'row', 'column')}
@@ -402,12 +532,16 @@ advance = f"""
 (fn Advance ()
   {put('LastStepWork', '0')} (if {get('Done')} (return))
   (if (<= {get('StepWorkLimit')} 0) {put('Done', 'true')} {put('Succeeded', 'false')} (return))
+  {integer_minv_advance_dispatch(get, put, at, call)}
+  {integer_u_advance_dispatch(get, call)}
   (if (== {get('SolverState')} 5) {call('AdvanceRelaxation')} (return))
   (if (== {get('SolverState')} 6) {call('AdvancePotentials')} (return))
   (if (== {get('SolverState')} 11) {call('AdvanceNativeRelaxation')} (return))
   (for work (range (select (> {get('StepWorkLimit')} 0) {get('StepWorkLimit')} 1))
     (if {get('Done')} (break))
-    (if (or (== {get('SolverState')} 11) (or (== {get('SolverState')} 5) (== {get('SolverState')} 6))) (break))
+    (if (== {get('SolverState')} 4)
+      (if {integer_u_state4_fence(get)} (break))
+      (else (if (or (== {get('SolverState')} 11) (or (== {get('SolverState')} 5) (== {get('SolverState')} 6))) (break))))
     {put('LastStepWork', f'(+ {get("LastStepWork")} 1)')}
     (switch int {get('SolverState')}
       (:0
@@ -440,8 +574,10 @@ advance = f"""
           {put('Cursor', f'(+ {get("Cursor")} 1)')}
           (else (Utilities|Array|Clear {get('UsedColumns')}) {put('SolverState', '10')})))
       (:4
+        {native_mark_dead_label(get, put, at, set_at)}
         {set_at('Used', get('J0'), 'true')} {put('I0', at('P', get('J0')))}
         (Utilities|Array|Add {get('UsedColumns')} {get('J0')})
+        (if (> {get('J0')} {get('ImplicitWorkerCount')}) {put('NativeUsedRealOnly', 'false')})
         {put('RowPotential', at('U', get('I0')))}
         {put('RowScoreOffset', f'(- (* (- {get("I0")} 1) {get("Cols")}) 1)')}
         (if {get('ImplicitFirstPass')} {implicit_row_setup(get, put, at, f'(- {get("I0")} 1)')})
@@ -450,7 +586,9 @@ advance = f"""
         {put('Delta', '1e30')} {put('J1', '0')} {put('BestColumnFree', 'false')}
         {put('Cursor', '1')} {put('SolverState', '5')}
         {first_row_shortcut}
-        {native_candidate_setup(get, put)})
+        {put('IntegerMinPhasePrepared', 'false')}
+        {native_candidate_setup(get, put)}
+        {integer_u_state4_complete(put)})
       (:5
         (if (<= {get('Cursor')} {get('Width')})
           (if {get('ImplicitFirstPass')} {implicit_relax_edge} (else {relax_edge}))
@@ -491,9 +629,12 @@ advance = f"""
       (:Default {put('Done', 'true')} {put('Succeeded', 'false')}))))
 """
 
-for name, code in (("BeginRow", begin), ("Initialize", initialize), ("InitializeImplicitFirstPass", initialize_implicit), ("RestrictDummies", restrict_dummies),
+for name, code in (("BeginRow", begin), ("Initialize", initialize), ("InitializeImplicitFirstPass", initialize_implicit),
+                   ("EnableNativeDeadLabels", enable_native_dead_labels), ("RestrictDummies", restrict_dummies),
                    ("AdvanceRelaxation", advance_relaxation), ("AdvanceNativeRelaxation", advance_native_relaxation),
-                   ("AdvancePotentials", advance_potentials), ("Advance", advance)):
+                   ("AdvancePotentials", advance_potentials), ("Advance", advance),
+                   *integer_u_graphs.items(), ("IntegerUDeferredPotentials", integer_u_deferred_potentials),
+                   *integer_minv_graphs.items()):
     with toolset_registry.tool_raising_exceptions():
         BP.write_graph_dsl(graphs[name], code)
     Path(unreal.Paths.project_saved_dir(), f"WorkerOptimizer-{name}.dsl").write_text(code, encoding="utf-8")

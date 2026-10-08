@@ -1,10 +1,10 @@
 # Worker Optimizer: lokaler Spieltest
 
-Version: **[0.3.3-performance-preview](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.3-performance-preview)**. Das Workshop-Update ist vorbereitet, aber nicht eingereicht. Die Mod zeigt ein Symbol fuer manuelle Zuweisung in der Spielebene. **Die oeffentliche Abnahme im echten Spiel steht aus und wird vom Benutzer durchgefuehrt.**
+Version: **[0.3.4-performance-preview](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.4-performance-preview)** fuer GitHub und lokale Tests. Die Workshop-Veroeffentlichung erfolgt separat und wird mit diesem Release nicht geaendert. Die Mod zeigt ein Symbol fuer manuelle Zuweisung in der Spielebene. **Die oeffentliche Abnahme im echten Spiel steht aus und wird vom Benutzer durchgefuehrt.**
 
-Sechs kompilierte Editor-Planertests mit je 1.000 Arbeitern benoetigten **5,61-14,55 Sekunden** auf dem Testrechner. Gepruefte Zuweisungen und Zielwerte blieben unveraendert; der bestehende exakte Ansatz wurde beibehalten. Gemessen wurden die Planeraufrufe, nicht der komplette Ablauf im Spiel. Aufnahme, Bewertung, Schulsuche, Frame-Verteilung und Anwendung der Zuweisungen koennen weitere Zeit benoetigen. Die Messwerte sind keine allgemeine Laufzeitzusage; siehe [Pruefnachweis](verification/2026-10-08-large-settlements.md).
+Sieben kompilierte Planerfaelle mit je 1.500 Arbeitern wurden jeweils in drei frisch gestarteten Commandlet-Prozessen gemessen. Die Planerzeit auf dem Testrechner betrug **1,84-4,91 Sekunden**. Gepruefte Zuweisungen und Zielwerte blieben exakt unveraendert; der bestehende exakte Ansatz bleibt ohne Hybridplaner erhalten. Die Messung umfasst `StartPlan`, Planerkonfiguration und Ergebnisbeobachtung. Aufnahme, Bewertung, Schulsuche, Frame-Verteilung und Anwendung der Zuweisungen liegen ausserhalb der Messung. Diese rechnerspezifischen Werte sind weder eine allgemeine Laufzeitzusage noch die gesamte Laufzeit im ausgelieferten Spiel; siehe [Pruefnachweis fuer 1.500 Arbeiter](verification/2026-10-08-1500-planner.md).
 
-Der kombinierte Build `20261008-115852-7696bc58` bestand am 8. Oktober 2026 die vollstaendige Editor-Testsuite einschliesslich Symbolsichtbarkeit, den Windows-Shipping-Cook und die Paketpruefung mit 46 Laufzeit-Assets / 92 Eintraegen. Solver- und Planer-Assets stimmen mit dem gemessenen Performance-Kandidaten ueberein. Der [Pruefnachweis zur Symbolsichtbarkeit](verification/2026-10-08-gameplay-visibility.md) dokumentiert die gespeicherten Assets und das finale Paket. Diese Pruefungen ersetzen die Spielabnahme nicht.
+Der Standard-Build `20261008-231147-23057f55` bestand erneut die vollstaendige registrierte Editor-Testsuite auf den final gespeicherten Assets: **89/89 Tests**, ohne gemeldete Test-/Laufzeitwarnungen oder Fehler. Windows-Shipping-Cook sowie Paketinhalt und -integritaet wurden erfolgreich geprueft. Die verifizierte PAK-Datei enthaelt **46 Laufzeit-Assets / 92 Eintraege** und umfasst **598.131 Bytes**; die Pruefsummen aller 46 Laufzeit-Assets in Quelle und Build-Projekt blieben durch den Build unveraendert. Build-Nachweise und Paketpruefsumme stehen in den [Release-Hinweisen zu v0.3.4](releases/v0.3.4-performance-preview.md). Diese Pruefungen ersetzen die weiterhin ausstehende Spielabnahme nicht.
 
 ## Was sich aendert
 
@@ -23,7 +23,7 @@ Der kombinierte Build `20261008-115852-7696bc58` bestand am 8. Oktober 2026 die 
 ## Vorbereitung
 
 1. Einen separaten Testspielstand verwenden und die bisherige Reserve notieren, soweit bekannt.
-2. Das frisch verifizierte kombinierte Paket mit Versionsangabe 0.3.3-performance-preview verwenden, nicht das fruehere Performance-Paket ohne Symbolkorrektur. Lokale Mod und Workshop-Kopie nicht gleichzeitig laden.
+2. Das verifizierte Paket mit Versionsangabe 0.3.4-performance-preview verwenden und vorher den Build- und Paketstatus in den [Release-Hinweisen](releases/v0.3.4-performance-preview.md) pruefen. Lokale Mod und Workshop-Kopie nicht gleichzeitig laden.
 3. Einen Spielstand mit alten Zeitplan-, Prioritaets- und Moduseinstellungen in den Test einschliessen.
 4. Fuer den ersten Zuweisungstest die Nacht oder den Beginn eines neuen Tages verwenden. Verhalten waehrend des Tages danach gesondert pruefen.
 
@@ -48,7 +48,7 @@ Der [native Pruefnachweis](verification/2026-10-07-native-workplace-capability.m
 8. **Endlicher Fehlerzustand:** Die unterstuetzten nativen Aufrufe wirken synchron; ihr Ergebnis wird unmittelbar nach der Rueckkehr geprueft. Nur beobachtete Aenderungen werden gezaehlt. Ein abgelehnter oder nicht beobachteter Effekt darf nach Auftrags- und Ergebnisabschluss keine dauerhafte Sperre hinterlassen; ein weiterer manueller Versuch muss ohne Weltwechsel moeglich sein. Spaetere unabhaengige Aenderungen duerfen nicht als verspaeteter Erfolg zaehlen.
 9. **Abhaengige Arbeiter:** Beim Wechsel eines zwingend erforderlichen Arbeiters die optionalen Arbeiter desselben Gebaeudes mitpruefen. Voruebergehendes gezieltes Freigeben darf nicht als unerfasste Nebenwirkung erscheinen; nach einem erfolgreichen Auftrag muessen die geplanten optionalen Zuweisungen wieder stimmen. Bei geschuetzten optionalen Bewohnern bleiben die betroffenen erforderlichen Arbeiter fest zugewiesen. Ein vorzeitig fehlgeschlagener Auftrag kann bereits bestaetigte Teilanderungen behalten.
 10. **Darstellung:** Symbol, Status und Tooltip bei kleiner/grosser Aufloesung sowie geaenderter Spielskalierung pruefen.
-11. **Laufzeit:** Einen grossen Spielstand mit bekannter Bewohner-, Arbeitsplatz- und Schulzahl testen. Die gesamte Zeit vom Klick bis zum Abschluss notieren, nicht nur die Planungsphase. Die Editor-Messung von 5,61-14,55 Sekunden ist kein Grenzwert fuer diesen Spieltest.
+11. **Laufzeit:** Einen grossen Spielstand mit bekannter Bewohner-, Arbeitsplatz- und Schulzahl testen. Die gesamte Zeit vom Klick bis zum Abschluss notieren, nicht nur die Planungsphase. Die rechnerspezifische Editor-Messung von 1,84-4,91 Sekunden ist kein Grenzwert fuer diesen Spieltest.
 
 ## Rueckmeldung
 
@@ -64,6 +64,6 @@ Bestaetigte Aenderungen werden nicht automatisch rueckgaengig gemacht. Eignungsm
 
 ## Veroeffentlichungsstatus
 
-Release: [v0.3.3-performance-preview](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.3-performance-preview). Paket: [WorkerOptimizer-v0.3.3-performance-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.3-performance-preview/WorkerOptimizer-v0.3.3-performance-preview.zip). Das Workshop-Update fuer das bestehende Item ist vorbereitet, aber nicht eingereicht; dort bleibt die am 7. Oktober 2026 veroeffentlichte Version 0.3.1-preview aktiv. Weder Vorbereitung noch Veroeffentlichung ersetzen die Spielabnahme.
+Release: [v0.3.4-performance-preview](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.4-performance-preview). Paket: [WorkerOptimizer-v0.3.4-performance-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.4-performance-preview/WorkerOptimizer-v0.3.4-performance-preview.zip). Diese Vorschau betrifft GitHub und lokale Tests. Die Workshop-Veroeffentlichung erfolgt separat und wird hier nicht geaendert. Der aktuelle Build- und Paketnachweis steht in den [Release-Hinweisen](releases/v0.3.4-performance-preview.md). Eine Veroeffentlichung ersetzt die Spielabnahme nicht.
 
 Historische Pruefungen der vorherigen UI sind in [Release-Validierung 0.2.0](PREVIEW.md) und im [Changelog](CHANGELOG.md) dokumentiert. Sie gelten nicht als Abnahme dieser Version.

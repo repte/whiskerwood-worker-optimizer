@@ -224,7 +224,10 @@ def test_step_work_bound():
     assert list(solver.get_editor_property("Assignment")) == list(range(15))
     planner = unreal.new_object(unreal.load_class(None, "/Game/Mods/WorkerOptimizer/BP_StaffingPlanner.BP_StaffingPlanner_C"))
     planner.set_editor_property("StepWorkLimit", 1)
-    planner.call_method("StartPlan", args=([1.0] * 300, [0] * 15, [True] + [False] * 14, [2], 20, True))
+    scores = [1.0] * 300
+    # Keep the required root on the general coverage scan, not the all-real shortcut.
+    scores[19] = -1e20
+    planner.call_method("StartPlan", args=(scores, [0] * 15, [True] + [False] * 14, [2], 20, True))
     assert planner.call_method("KeepUnassigned", args=(2, 20, [float(w) for w in range(20)]))[-1]
     states = set()
     rows, workers, buildings = 17, 20, 1  # Includes the two reserve rows.
@@ -240,7 +243,11 @@ def test_step_work_bound():
         assert planner.get_editor_property("LastStepWork") == 1
     assert planner.get_editor_property("PlanDone") and planner.get_editor_property("PlanSucceeded")
     assert {10, 11, 13, 18, 21, 24, 22, 5, 8, 27}.issubset(states), states
-    assert len(set(planner.get_editor_property("PlanAssignment"))) == 15
+    assignment = list(planner.get_editor_property("PlanAssignment"))
+    assert len(set(assignment)) == 15
+    assert not planner.get_editor_property("RowAllReal")[0]
+    assert all(0 <= worker < 20 for worker in assignment), assignment
+    assert sum(scores[row * 20 + worker] for row, worker in enumerate(assignment)) == 15.0
 
 
 def test_cancel_during_initialization():

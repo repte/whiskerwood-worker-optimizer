@@ -28,6 +28,10 @@ def snapshot(planner):
         values[name] = scalar_bits(planner.get_editor_property(name))
     values["BaseScores"] = tuple(
         scalar_bits(value) for value in planner.get_editor_property("BaseScores"))
+    for name in ("RowFirstScore", "RowMaximumScore", "RowSecondScore", "RowPrefixScore"):
+        values[name] = tuple(scalar_bits(value) for value in planner.get_editor_property(name))
+    for name in ("RowFirstColumn", "RowMaximumColumn", "RowAllReal", "RowUniformScore"):
+        values[name] = tuple(planner.get_editor_property(name))
     return values
 
 
@@ -61,12 +65,17 @@ def verify_differential(fixed, reserve, limit, scores=None):
         batch.call_method("AdvancePlan")
         work = batch.get_editor_property("LastStepWork")
         assert 0 < work <= min(limit, remaining + 1), (limit, remaining, work)
-        for _ in range(work):
+        reference_steps = work if fixed or limit == 1 else None
+        for _ in range(reference_steps if reference_steps is not None else remaining + 1):
+            if reference_steps is None and snapshot(single) == snapshot(batch):
+                break
             assert single.get_editor_property("State") == 0 and not single.get_editor_property("PlanDone")
             single.call_method("ValidateBlock")
         assert snapshot(batch) == snapshot(single), (fixed, reserve, limit, total)
         total += work
-        assert total <= len(batch.get_editor_property("BaseScores")) + 1
+        cells = len(batch.get_editor_property("BaseScores"))
+        rows = batch.get_editor_property("SlotCount")
+        assert total <= (cells + 1 if fixed or limit == 1 else 2 * cells + 2 * rows + 1)
     return batch, total
 
 
@@ -74,11 +83,13 @@ def verify_validation_fence():
     planner = start()
     cells = len(planner.get_editor_property("BaseScores"))
     planner.set_editor_property("StepWorkLimit", 64)
-    planner.call_method("AdvancePlan")
+    while planner.get_editor_property("State") == 0:
+        planner.call_method("AdvancePlan")
+        assert 0 < planner.get_editor_property("LastStepWork") <= 64
     assert planner.get_editor_property("State") == 19, (
         "Validation batch must yield before building preprocessing",
         planner.get_editor_property("State"))
-    assert planner.get_editor_property("LastStepWork") == cells + 1
+    assert planner.get_editor_property("LastStepWork") == 1
     assert planner.get_editor_property("PlanValidationIndex") == cells
 
 
@@ -134,7 +145,11 @@ for fixed in (False, True):
             if not fixed:
                 assert planner.get_editor_property("MaxScore") == 1000000.0
             totals.append(work)
-        assert len(set(totals)) == 1, (fixed, reserve, totals)
+        if fixed:
+            assert len(set(totals)) == 1, (fixed, reserve, totals)
+        else:
+            assert totals[0] == len(SCORES) + reserve * 4 + 1
+            assert totals[1] == totals[2], (fixed, reserve, totals)
 verify_invalid_masked_score()
 verify_native_visited_reset()
 unreal.log("WO_PLANNER_VALIDATION_TESTS_PASS: bit-exact single/batch validation, fixed/reserve/invalid scores, phase fence, native visited reset")

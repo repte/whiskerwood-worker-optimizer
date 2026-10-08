@@ -7,9 +7,9 @@
 **Auto-assign your Whiskerwood workers to suitable jobs with one click.**
 
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D4)
-![Version: v0.3.3-performance-preview](https://img.shields.io/badge/version-v0.3.3--performance--preview-d99020)
+![Version: v0.3.4-performance-preview](https://img.shields.io/badge/version-v0.3.4--performance--preview-d99020)
 
-[Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) · [GitHub release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.3-performance-preview) · [Preview notes](docs/releases/v0.3.3-performance-preview.md) · [Documentation](docs/GUIDE.md)
+[Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) · [GitHub release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.4-performance-preview) · [Preview notes](docs/releases/v0.3.4-performance-preview.md) · [Documentation](docs/GUIDE.md)
 
 </div>
 
@@ -32,15 +32,15 @@ The icon uses the same native gameplay-HUD visibility checks as the Campfire Pan
 > For best results, run worker assignment calculations at night or just after a new day starts. Running them during the day may cause assignment errors.
 
 > [!NOTE]
-> **Version: v0.3.3-performance-preview**, targeting Whiskerwood **0.7.209.0 on Windows**. The Workshop update is prepared, not submitted. Public in-game acceptance remains pending; use a separate save. See [preview details](docs/releases/v0.3.3-performance-preview.md).
+> **Version: v0.3.4-performance-preview**, targeting Whiskerwood **0.7.209.0 on Windows**. This preview is distributed through GitHub; Workshop publication is separate. Public in-game acceptance remains pending; use a separate save. See [preview details](docs/releases/v0.3.4-performance-preview.md).
 
-Six compiled-editor planner benchmarks with 1,000 workers took **5.61-14.55 seconds** on the test machine. These measure planner calls, not the entire in-game operation, and are not a runtime guarantee. [Measurements and limits](docs/verification/2026-10-08-large-settlements.md).
+Seven compiled planner benchmarks with **1,500 workers**, each repeated in three fresh processes, took **1.84-4.91 seconds** on the test machine. All 21 measurements were below five seconds, with unchanged checked assignments and objectives. Timing includes planner initialization, configuration and result checks, not the entire in-game operation, and is not a runtime guarantee for other hardware or settlements. The existing exact approach is retained, with no hybrid or approximate replacement. [Measurements and limits](docs/verification/2026-10-08-1500-planner.md).
 
 ## Install
 
-**Steam Workshop:** [Worker Optimizer](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) currently offers **v0.3.1-preview**. The **v0.3.3-performance-preview** update is prepared, not submitted. Restart the game after Steam downloads an update.
+**Steam Workshop:** [Worker Optimizer](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) is updated separately. This GitHub release does not update the Workshop item. Restart the game after Steam downloads an update.
 
-**Manual installation:** Use the packaged [WorkerOptimizer-v0.3.3-performance-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.3-performance-preview/WorkerOptimizer-v0.3.3-performance-preview.zip), not the source-code ZIP. Close the game and extract its `WorkerOptimizer` folder here:
+**Manual installation:** Use the packaged [WorkerOptimizer-v0.3.4-performance-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.4-performance-preview/WorkerOptimizer-v0.3.4-performance-preview.zip), not the source-code ZIP. Close the game and extract its `WorkerOptimizer` folder here:
 
 ```text
 %LOCALAPPDATA%\Whiskerwood\Saved\mods\WorkerOptimizer\

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.4-performance-preview - 8 October 2026
+
+Exact 1,500-worker planner performance preview. [GitHub release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.4-performance-preview)
+and [packaged ZIP](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.4-performance-preview/WorkerOptimizer-v0.3.4-performance-preview.zip).
+Workshop publication is separate; in-game acceptance of this version remains pending.
+
+- Keep the existing exact assignment approach, without a hybrid or approximate replacement.
+- Reduce repeated matrix validation, row processing, label updates and coordinator calls using exact, guarded optimizations.
+- Preserve minimum staffing, eligibility, protected workers, builder reserve and the gameplay-only assignment icon.
+- Measure seven 1,500-worker cases in three fresh processes each at 1.84-4.91 seconds of host planner time; all original assignment/objective checks and the additional fractional reference comparison pass.
+- Pass all 89 registered regression scripts on the final saved assets, including cancellation, restart, priorities, reserve, teacher profiles and icon visibility.
+- Keep settlement capture, scoring, school search, frame scheduling and assignment application outside the planner-only timing claim. These measurements are not a universal or in-game end-to-end guarantee.
+
+See [measurement evidence](verification/2026-10-08-1500-planner.md) and
+[release/package verification](releases/v0.3.4-performance-preview.md).
+
 ## 0.3.3-performance-preview - 8 October 2026
 
 Performance and gameplay-layer visibility preview. [GitHub release](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.3-performance-preview)

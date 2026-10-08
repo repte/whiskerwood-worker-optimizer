@@ -68,7 +68,7 @@ def verify_selection_work():
 
 CASES = [
     dict(workers=4, buildings=[0, 0, 1, 1], minimum=[True, False, True, False],
-         priorities=[4, 0], scores=[10.0 if row == worker else 1.0
+         priorities=[4, 0], scores=[-1e20 if (row, worker) == (0, 3) else 10.0 if row == worker else 1.0
                                    for row in range(4) for worker in range(4)]),
     dict(workers=4, buildings=[0, 0, 1, 1], minimum=[True, False, True, False],
          priorities=[2, 0], fixed=[2, -1, -1, -1], reserve=1,

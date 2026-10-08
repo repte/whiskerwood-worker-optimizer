@@ -1,27 +1,32 @@
 # Worker Optimizer: Spieltest
 
-Version: **[0.3.3-performance-preview](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.3-performance-preview)**, vorgesehen fuer Whiskerwood
-**0.7.209 unter Windows**. Das Workshop-Update ist vorbereitet, aber nicht
-eingereicht; dort bleibt 0.3.1-preview aktiv. **Die oeffentliche Abnahme im echten Spiel steht aus und wird vom
+Version: **[0.3.4-performance-preview](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.4-performance-preview)**, vorgesehen fuer Whiskerwood
+**0.7.209 unter Windows**, fuer GitHub und lokale Tests. Die Workshop-Veroeffentlichung
+erfolgt separat und wird hier nicht geaendert. **Die oeffentliche Abnahme im echten Spiel steht aus und wird vom
 Benutzer durchgefuehrt.** Fruehere Spieltests gelten nicht als Abnahme dieser
 Version.
 
-Paket: [WorkerOptimizer-v0.3.3-performance-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.3-performance-preview/WorkerOptimizer-v0.3.3-performance-preview.zip).
+Paket: [WorkerOptimizer-v0.3.4-performance-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.4-performance-preview/WorkerOptimizer-v0.3.4-performance-preview.zip).
 
-Der bestehende exakte Planungsansatz bleibt erhalten. Sechs kompilierte
-Editor-Planertests mit je 1.000 Arbeitern benoetigten auf dem Testrechner
-**5,61-14,55 Sekunden** bei unveraenderten geprueften Zuweisungen und Zielwerten.
-Das ist keine Laufzeitzusage fuer das Spiel: Aufnahme, Bewertung, Schulsuche,
-Frame-Verteilung und Anwendung der Zuweisungen liegen ausserhalb dieser
-Planermessung.
+Der bestehende exakte Planungsansatz bleibt ohne Hybridplaner erhalten. Sieben
+kompilierte Planerfaelle mit je 1.500 Arbeitern wurden jeweils in drei
+frisch gestarteten Commandlet-Prozessen gemessen. Die Planerzeit auf dem Testrechner betrug
+**1,84-4,91 Sekunden** bei exakt unveraenderten geprueften Zuweisungen und Zielwerten.
+Die Messung umfasst `StartPlan`, Planerkonfiguration und Ergebnisbeobachtung.
+Aufnahme, Bewertung, Schulsuche, Frame-Verteilung und Anwendung der Zuweisungen
+liegen ausserhalb dieser Planermessung. Die rechnerspezifischen Werte sind weder
+eine allgemeine Laufzeitzusage noch die gesamte Laufzeit im ausgelieferten Spiel.
+Siehe den [Pruefnachweis fuer 1.500 Arbeiter](https://github.com/repte/whiskerwood-worker-optimizer/blob/main/docs/verification/2026-10-08-1500-planner.md).
 
-Der kombinierte Build `20261008-115852-7696bc58` bestand am 8. Oktober 2026 die
-vollstaendige Editor-Testsuite einschliesslich Symbolsichtbarkeit, den
-Windows-Shipping-Cook und die Paketpruefung: 46 Laufzeit-Assets / 92 Eintraege,
-557.151 Bytes. Solver- und Planer-Assets stimmen mit dem gemessenen
-Performance-Kandidaten ueberein. Siehe den [Pruefnachweis zur Symbolsichtbarkeit](https://github.com/repte/whiskerwood-worker-optimizer/blob/main/docs/verification/2026-10-08-gameplay-visibility.md)
-fuer gespeicherte Assets und die finale Paketpruefsumme. Das ersetzt keine
-Abnahme im echten Spiel.
+Der Standard-Build `20261008-231147-23057f55` bestand erneut die vollstaendige
+registrierte Editor-Testsuite auf den final gespeicherten Assets: **89/89 Tests**,
+ohne gemeldete Test-/Laufzeitwarnungen oder Fehler. Windows-Shipping-Cook sowie
+Paketinhalt und -integritaet wurden erfolgreich geprueft. Die verifizierte
+PAK-Datei enthaelt **46 Laufzeit-Assets / 92 Eintraege** und umfasst **598.131 Bytes**.
+Die Pruefsummen aller 46 Laufzeit-Assets in Quelle und Build-Projekt blieben durch
+den Build unveraendert. Build-Nachweise und Paketpruefsumme stehen in den
+[Release-Hinweisen zu v0.3.4](https://github.com/repte/whiskerwood-worker-optimizer/blob/main/docs/releases/v0.3.4-performance-preview.md)
+und ersetzen die weiterhin ausstehende Abnahme im echten Spiel nicht.
 
 ## Vorbereitung
 
@@ -29,9 +34,10 @@ Abnahme im echten Spiel.
   Bewohner-, Arbeitsplatz- und Schulzahl notieren.
 - Nur eine Mod-Kopie laden: Workshop oder lokale Installation.
 - Das Spiel vor jedem Austausch der Mod-Dateien speichern und beenden.
-- Das frisch verifizierte kombinierte Paket mit Versionsangabe
-  0.3.3-performance-preview verwenden, nicht das fruehere Performance-Paket
-  ohne Symbolkorrektur.
+- Das verifizierte Paket mit Versionsangabe 0.3.4-performance-preview verwenden.
+  Vorher den Build- und Paketstatus in den
+  [Release-Hinweisen](https://github.com/repte/whiskerwood-worker-optimizer/blob/main/docs/releases/v0.3.4-performance-preview.md)
+  pruefen.
 - Einen Spielstand mit alten Zeitplan-, Prioritaets- und Moduseinstellungen
   einschliessen. Fuer den ersten Zuweisungstest die Nacht oder den Beginn eines
   neuen Tages verwenden; Tagesbetrieb danach gesondert pruefen.

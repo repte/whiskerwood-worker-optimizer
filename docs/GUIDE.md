@@ -8,7 +8,7 @@ Assign residents to suitable workplaces with one manual icon, while respecting t
 
 Worker Optimizer matches residents to jobs using guild specialties, productivity and job eligibility. It selects feasible minimum operating crews before filling additional positions by suitability. Active supported workplaces have equal priority in this preview.
 
-**Version scope:** this guide describes **v0.3.3-performance-preview**. The Workshop update is prepared, not submitted. Public in-game acceptance remains pending and belongs to the user. Historical validation for earlier releases does not validate this preview.
+**Version scope:** this guide describes **v0.3.4-performance-preview** for GitHub distribution and local testing. Workshop publication is separate and is not changed by this release. Public in-game acceptance remains pending and belongs to the user. Historical validation for earlier releases does not validate this preview.
 
 ## Features
 
@@ -27,15 +27,15 @@ Worker Optimizer matches residents to jobs using guild specialties, productivity
 
 ## Status
 
-The target is **Whiskerwood 0.7.209.0 for Windows**. **Version: [v0.3.3-performance-preview](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.3-performance-preview).** The existing [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) remains the update target; its live version is v0.3.1-preview. The Workshop update is prepared, not submitted.
+The target is **Whiskerwood 0.7.209.0 for Windows**. **Version: [v0.3.4-performance-preview](https://github.com/repte/whiskerwood-worker-optimizer/releases/tag/v0.3.4-performance-preview).** This release covers GitHub distribution and local testing. Publication to the existing [Workshop item](https://steamcommunity.com/sharedfiles/filedetails/?id=3814077514) is separate and is not changed here.
 
-**Public in-game acceptance is pending and belongs to the user.** Performance and gameplay-layer visibility must be checked in the shipping game, along with the preserved workplace protections. Editor tests use native-function stubs and cannot establish that game-side commands succeed. Use a separate test save. See [preview notes](releases/v0.3.3-performance-preview.md).
+**Public in-game acceptance is pending and belongs to the user.** Performance and gameplay-layer visibility must be checked in the shipping game, along with the preserved workplace protections. Editor tests use native-function stubs and cannot establish that game-side commands succeed. Use a separate test save. See [preview notes](releases/v0.3.4-performance-preview.md).
 
 ## Installation
 
-The Workshop update is prepared, not submitted. After Workshop publication, subscribe, wait for Steam to download the update and restart the game. Until then the existing subscription provides v0.3.1-preview. Use either Workshop or the local package, never both at the same time.
+This preview is intended for GitHub distribution and local testing; Workshop publication is separate. Use either Workshop or the local package, never both at the same time.
 
-For manual installation, use [WorkerOptimizer-v0.3.3-performance-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.3-performance-preview/WorkerOptimizer-v0.3.3-performance-preview.zip), or the separately provided verified local test package. Do not use the source-code ZIP. Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
+For manual installation, use [WorkerOptimizer-v0.3.4-performance-preview.zip](https://github.com/repte/whiskerwood-worker-optimizer/releases/download/v0.3.4-performance-preview/WorkerOptimizer-v0.3.4-performance-preview.zip), or the separately provided verified local test package. Check the [release notes](releases/v0.3.4-performance-preview.md) for build and package verification status before installing. Do not use the source-code ZIP. Close Whiskerwood before installing or replacing the mod. Place the packaged files in this directory:
 
 ```text
 %LOCALAPPDATA%\Whiskerwood\Saved\mods\WorkerOptimizer\
@@ -162,11 +162,11 @@ Only the `.pak` and `.uplugin` files in that folder are installation inputs. The
 
 ## Verification and Known Limits
 
-**Current preview: public in-game acceptance is pending.** The user will test **0.3.3-performance-preview**. Neither editor fixtures nor successful package checks prove that live assignments succeed. See [preview notes](releases/v0.3.3-performance-preview.md) for verification status.
+**Current preview: public in-game acceptance is pending.** The user will test **0.3.4-performance-preview**. Neither editor fixtures nor successful package checks prove that live assignments succeed. See [preview notes](releases/v0.3.4-performance-preview.md) for verification status.
 
-Six compiled-editor benchmarks with 1,000 workers took **5.61-14.55 seconds of accumulated planner calls** on the test machine. Assignment hashes and the checked staffing, productivity and reserve objectives were unchanged. The [large-settlement verification record](verification/2026-10-08-large-settlements.md) contains both measurement runs, fixtures and hardware context. These timings exclude the complete in-game capture, scoring, school-search, frame scheduling and application workflow; they are not a guarantee for total in-game duration or every settlement.
+Seven compiled commandlet benchmark cases with 1,500 workers, each measured in three fresh processes, took **1.84-4.91 seconds of host planner time** on the test machine. Checked assignments and staffing, productivity and reserve objectives remained exactly unchanged; the existing exact approach is preserved without a hybrid solver. The measurement includes `StartPlan`, planner configuration and result observation. Settlement capture, scoring, school search, frame scheduling and assignment application are excluded. These host-specific timings are neither a universal runtime guarantee nor a measurement of the complete shipping-game operation. See the [1,500-worker planner verification record](verification/2026-10-08-1500-planner.md) for fixtures, measurements and limits.
 
-Combined build `20261008-115852-7696bc58` passed the complete editor suite, including the gameplay-visibility regression, a Windows Shipping cook and package checks on 8 October 2026. The package contains 46 runtime assets / 92 entries; solver and planner asset hashes match the measured performance candidate. See the [gameplay-visibility verification record](verification/2026-10-08-gameplay-visibility.md) for saved-asset checks and final package identification. Public gameplay acceptance remains separate.
+Standard build `20261008-231147-23057f55` passed the complete registered editor suite again on the final saved assets: **89/89 tests**, with no reported test/runtime warnings or errors. The Windows Shipping cook and package inventory/integrity checks passed. The verified PAK contains **46 runtime assets / 92 entries** and is **598,131 bytes**; all 46 runtime source and mirror asset hashes remained unchanged through the build. See the [v0.3.4 release notes](releases/v0.3.4-performance-preview.md) for the build evidence and package checksum. Public gameplay acceptance remains pending and separate from these checks.
 
 Acceptance should cover the gameplay-only icon through menus, pause, end of day, HUD hiding, loading and saving; request continuity while hidden; large-settlement total runtime; unchanged protected occupants; the preserved builder reserve; minimum crews before extra staffing; and actual confirmed worker changes. Saved schedules remain inactive and old priority/mode preferences remain ignored. Test a separate save with existing preferences; use the [local test checklist](LOCAL_TEST.md).
 

@@ -41,6 +41,7 @@ def initial(rng, workers, rows, case):
     if case % 7 == 0:
         scores[rng.randrange(len(scores))] = rng.choice([float("nan"), float("inf"), -float("inf"), -1.01e20, 1000000.1])
     return dict(BaseScores=scores, WorkerCount=workers, FixedConfigured=bool(case % 3),
+                HasActualFixed=bool(case % 3) and any(worker >= 0 for worker in fixed),
                 FixedSlots=fixed, FixedOwners=owners, ScanRow=0, ScanWorker=0,
                 PlanValidationIndex=0, MaxScore=0.0, PlanDone=False, PlanSucceeded=False,
                 StatsOffset=0, StatsEnd=workers, StatsFirstColumn=0, StatsMaximumColumn=0,
@@ -56,7 +57,7 @@ def oracle_cell(state):
     if not (-1e20 <= value <= 1e6):
         state["PlanDone"], state["PlanSucceeded"] = True, False
         return
-    if state["FixedConfigured"]:
+    if state.get("HasActualFixed", state["FixedConfigured"]):
         row, worker = divmod(index, state["WorkerCount"])
         state["ScanRow"], state["ScanWorker"] = row, worker
         fixed, owner = state["FixedSlots"][row], state["FixedOwners"][worker]

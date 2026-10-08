@@ -13,6 +13,11 @@ from planner_refine_cache_dsl import constant_real_score
 from planner_refine_reconstruct_dsl import (RECONSTRUCTION_VARIABLES, start_reconstruction, start_payload,
     full_real_certificate, cache_lookup, cache_store, append_row, retain_dummy, finish_reconstruction)
 from planner_validation_dsl import statistics as validation_statistics
+from planner_native_validation_dsl import (NATIVE_VALIDATION_VARIABLES, reset_native_validation,
+    publish_statistics, activate_native_validation, native_validation)
+from planner_single_max_template_dsl import (SINGLE_MAXIMUM_VARIABLES, single_maximum_reset,
+    single_maximum_begin, single_maximum_cell)
+from planner_array_authoring import configure_make_array64, write_graph_dsl as write_graph_with_config
 
 ROOT = "/Game/Mods/WorkerOptimizer"
 parent = unreal.load_class(None, ROOT + "/BP_AssignmentSolver.BP_AssignmentSolver_C")
@@ -22,7 +27,7 @@ if bp is None:
     bp = BP.create(ROOT, "BP_StaffingPlanner", parent)
 
 types = {
-    "bool": "PlanDone PlanSucceeded StrictMode FixedConfigured ReserveConfigured FlexibleConfigured FirstPass BuildMinimum BuildRealAllowed BuildDummyAllowed",
+    "bool": "PlanDone PlanSucceeded StrictMode FixedConfigured HasActualFixed FractionalBuilderQuality ReserveConfigured FlexibleConfigured FirstPass BuildMinimum BuildRealAllowed BuildDummyAllowed",
     "int": "State SlotCount WorkerCount BuildingCount CurrentBuilding CurrentSlot RootSlot QueueHead SearchRow FoundWorker AugmentRow PreviousWorker BestPriority Tier LowestTier BuildIndex BuildEnd ScanRow ScanWorker ScanPriority PlanValidationIndex PlanValidationEnd TierCount RealSlotCount ReserveCount PolicyCursor ReserveMovable ReserveRow DispatchState PolicyWork SolveColumns DummyRemaining UnionRow MatrixCells BuildBaseOffset BuildBuilding BuildMode BuildMultiplier SelectionTier SelectionCursor BuildRowOffset RetainedCursor RetainedEnd",
     "float": "MaxScore FillBonus CoverageBonus ColumnBonus EdgeScore ReducedCost TierScore BuilderTotal ReserveMinimumQuality StatsFirstScore StatsMaximumScore StatsPrefixScore MinimumScore MinimumScratch RefineRowPotential",
     "float[]": "BaseScores PassScores ExpectedScores ReserveQuality ExpandedScores PassRowMinCost RowFirstScore RowMaximumScore RowPrefixScore",
@@ -41,6 +46,10 @@ types["bool"] += " RefineMaxVReady"
 types["int"] += " RefineMaxVCursor RefineWinner"
 types["float"] += " RefineMaxRealV"
 for kind, names in RECONSTRUCTION_VARIABLES.items():
+    types[kind] += ' ' + names
+for kind, names in NATIVE_VALIDATION_VARIABLES.items():
+    types[kind] += ' ' + names
+for kind, names in SINGLE_MAXIMUM_VARIABLES.items():
     types[kind] += ' ' + names
 existing = set(BP.list_variables(bp))
 for kind, names in types.items():
@@ -121,6 +130,9 @@ code["StartPlan"] = f"""
 (fn StartPlan (InputScores InputBuildings InputMinimum InputPriorities InputWorkers InputStrict)
   {call('FailPlan')}
   {s('FixedConfigured', 'false')}
+  {s('HasActualFixed', 'false')}
+  {s('FractionalBuilderQuality', 'false')}
+  {reset_native_validation(g, s, node)}
   {s('FlexibleConfigured', 'false')}
   {s('ReserveConfigured', 'false')} {s('ReserveCount', '0')}
   {s('FirstPass', 'true')} {s('ImplicitFirstPass', 'false')} {s('MatrixCells', '0')}
@@ -197,7 +209,7 @@ def validation_cell(stop):
     {s('ValidatedScore', a('BaseScores', 'n'))}
     (bind value {g('ValidatedScore')})
     (if (not (and (>= value -1e20) (<= value 1e6))) {call('FailPlan')} {stop})
-    (if {g('FixedConfigured')}
+    (if {g('HasActualFixed')}
       {s('ScanRow', f'(/ n {g("WorkerCount")})')} {s('ScanWorker', f'(- n (* {g("ScanRow")} {g("WorkerCount")}))')}
       (bind fixedWorker {a('FixedSlots', g('ScanRow'))}) (bind fixedOwner {a('FixedOwners', g('ScanWorker'))})
       (if (or (and (>= fixedWorker 0) (!= fixedWorker {g('ScanWorker')}))
@@ -206,18 +218,7 @@ def validation_cell(stop):
     {validation_statistics(g, s, value='value', column=f'(+ (- n {g("StatsOffset")}) 1)')}
     {s('PlanValidationIndex', f'(+ n 1)')}
     (if (== {g('PlanValidationIndex')} {g('StatsEnd')})
-      (Utilities|Array|Add {g('RowFirstColumn')} {g('StatsFirstColumn')})
-      (Utilities|Array|Add {g('RowMaximumColumn')} {g('StatsMaximumColumn')})
-      (Utilities|Array|Add {g('RowFirstScore')} {g('StatsFirstScore')})
-      (Utilities|Array|Add {g('RowMaximumScore')} {g('StatsMaximumScore')})
-      (Utilities|Array|Add {g('RowPrefixScore')} {g('StatsPrefixScore')})
-      (Utilities|Array|Add {g('RowSecondScore')} {g('StatsSecondScore')})
-      (Utilities|Array|Add {g('RowAllReal')} {g('StatsAllReal')})
-      (Utilities|Array|Add {g('RowUniformScore')} {g('StatsUniformScore')})
-      {s('StatsAllReal', 'true')} {s('StatsUniformScore', 'true')}
-      {s('StatsOffset', g('StatsEnd'))} {s('StatsEnd', f'(+ {g("StatsEnd")} {g("WorkerCount")})')}
-      {s('StatsFirstColumn', '0')} {s('StatsMaximumColumn', '0')}
-      {s('StatsFirstScore', '-1e20')} {s('StatsMaximumScore', '-1e20')} {s('StatsPrefixScore', '-1e20')} {s('StatsSecondScore', '-1e20')})
+      {publish_statistics(g, s)})
 """
 
 
@@ -236,11 +237,15 @@ code["ValidateBlock"] = f"""
 """
 code["BatchValidateBlock"] = f"""
 (fn BatchValidateBlock ()
-  (for work (range {g('StepWorkLimit')})
-    {s('LastStepWork', '(+ work 1)')}
-    (bind n {g('PlanValidationIndex')})
-    (if (< n {length('BaseScores')}) {validation_cell('(break)')}
-      (else {validation_finish} (break)))))
+  {activate_native_validation(g, s, length)}
+  (if (> {g('NativeValidationStage')} 0)
+    {native_validation(g, s, a, node, validation_cell, validation_finish)}
+    (else
+      (for work (range {g('StepWorkLimit')})
+        {s('LastStepWork', '(+ work 1)')}
+        (bind n {g('PlanValidationIndex')})
+        (if (< n {length('BaseScores')}) {validation_cell('(break)')}
+          (else {validation_finish} (break)))))))
 """
 
 code["SelectBuilding"] = f"""
@@ -281,7 +286,15 @@ code["CoverageStep"] = f"""
     {s('CoverageSlotMatch', g('SavedSlotMatch'))} {s('CoverageWorkerMatch', g('SavedWorkerMatch'))}
     {s('PolicyCursor', '0')} {s('CurrentBuilding', '-1')} {s('BestPriority', '-1')} {s('State', '1')} (return))
   {s('SearchRow', a('Queue', g('QueueHead')))} {s('QueueHead', f'(+ {g("QueueHead")} 1)')}
-  {s('FoundWorker', '-1')} {s('ScanWorker', '0')} {reset_union} {s('State', '24')})
+  {s('FoundWorker', '-1')} {s('ScanWorker', '0')} {reset_union} {s('State', '24')}
+  ; A complete first root stops at the same first free worker before using its queue.
+  (if (and (> {g('WorkerCount')} 0) (and (== {g('QueueHead')} 1) (== {g('SearchRow')} {g('RootSlot')})))
+    (if (and (>= {g('RootSlot')} 0) (< {g('RootSlot')} {g('SlotCount')}))
+      (if (and {a('RowAllReal', g('RootSlot'))} (< {a('CoverageSlotMatch', g('RootSlot'))} 0))
+        {s('FoundWorker', f'({node("FindItem")} :TargetArray {g("CoverageWorkerMatch")} :ItemToFind -1)')}
+        (if (>= {g('FoundWorker')} 0)
+          {set_a('ParentRow', g('FoundWorker'), g('RootSlot'))}
+          {set_a('Visited', g('FoundWorker'), 'true')} {s('State', '22')})))))
 """
 
 code["BeginPass"] = f"""
@@ -305,6 +318,7 @@ code["BeginPass"] = f"""
       {s('TemplatePlainCost', '1e20')} {s('TemplatePlainSecond', '1e20')} {s('TemplatePlainColumn', '1')}
       {s('TemplateMinimumCost', '1e20')} {s('TemplateMinimumSecond', '1e20')} {s('TemplateMinimumColumn', '1')}))
   {s('TemplatesReady', 'false')} {s('BuildRowReady', 'false')} {s('RefineInitialized', 'false')}
+  {single_maximum_reset(g, s)}
   {s('BuildIndex', '0')} {s('ScanRow', '0')} {s('ScanWorker', '0')} {s('BuildBaseOffset', '0')}
   {s('BuildRowOffset', '0')} {s('RetainedCursor', '0')} {s('RetainedEnd', '0')}
   {s('State', '4')})
@@ -385,7 +399,9 @@ build_sparse_row = f"""
   {s('RetainedCursor', a('RetainedRowOffsets', g('ScanRow')))}
   {s('RetainedEnd', a('RetainedRowOffsets', f'(+ {g("ScanRow")} 1)'))}
   {s('BuildRowReady', 'true')} {s('BuildRealAllowed', 'false')}
-  (if (and (== {g('BuildMode')} 0) (> {g('WorkerCount')} 0))
+  {single_maximum_begin(g, s, a, set_a)}
+  (if (not {g('SingleTemplateHandled')})
+    (if (and (== {g('BuildMode')} 0) (> {g('WorkerCount')} 0))
     (if (>= (- {g('RetainedEnd')} {g('RetainedCursor')}) {g('WorkerCount')})
       (if (== {a('RetainedColumns', f'(- (+ {g("RetainedCursor")} {g("WorkerCount")}) 1)')} (- {g('WorkerCount')} 1))
         {s('BuildRealAllowed', 'true')})))
@@ -405,11 +421,12 @@ build_sparse_row = f"""
       (Utilities|Array|AppendArray {g('PassScores')} {g('SentinelRow')})
       {set_a('PassRowMinCost', g('ScanRow'), '1e20')}
       {set_a('PassRowSecondMinCost', g('ScanRow'), '1e20')}
-      {set_a('PassRowMinColumn', g('ScanRow'), '1')}))
+      {set_a('PassRowMinColumn', g('ScanRow'), '1')})))
 """
 build_sparse_cell = f"""
   (if (not {g('BuildRowReady')}) {build_sparse_row}
-    (else
+    (elif {g('SingleTemplateBuilding')} {single_maximum_cell(g, s, a, set_a)}
+      (else
     {s('ScanWorker', a('RetainedColumns', g('RetainedCursor')))}
     (bind n (+ {g('BuildRowOffset')} {g('ScanWorker')}))
     {score_allowed_edge}
@@ -420,7 +437,7 @@ build_sparse_cell = f"""
         {set_a('PassRowMinCost', g('ScanRow'), f'(- {g("EdgeScore")})')}
         {set_a('PassRowMinColumn', g('ScanRow'), f'(+ {g("ScanWorker")} 1)')}
         (else {set_a('PassRowSecondMinCost', g('ScanRow'), f'(- {g("EdgeScore")})')})))
-    {s('RetainedCursor', f'(+ {g("RetainedCursor")} 1)')}))
+    {s('RetainedCursor', f'(+ {g("RetainedCursor")} 1)')})))
   {s('BuildIndex', f'(+ {g("BuildIndex")} 1)')}
   (if (>= {g('RetainedCursor')} {g('RetainedEnd')})
     {build_row_finish})
@@ -447,6 +464,10 @@ initialize_pass = f"""
   (if (and (not {g('FirstPass')}) {g('RetainedReady')})
     {s('NativeRowOffsets', g('RetainedRowOffsets'))} {s('NativeColumns', g('RetainedColumns'))}
     {s('NativeCsrReady', 'true')})
+  {call('EnableNativeDeadLabels')}
+  {s('IntegerUEnabled', 'true')}
+  {s('IntegerMinEnabled', 'true')}
+  {s('DyadicEighthsEnabled', g('FractionalBuilderQuality'))}
   {s('FirstPass', 'false')} {s('State', '5')}
 """
 code["BuildPass"] = f"""
@@ -778,6 +799,7 @@ code["PolicyStep"] = f"""
             (if (or (>= {a('FixedOwners', 'worker')} 0)
               (not (>= {a('BaseScores', f'(+ (* i {g("WorkerCount")}) worker)')} 0.0))) {call('FailPlan')}
               (else
+                {s('HasActualFixed', 'true')}
                 {set_a('FixedOwners', 'worker', 'i')} {set_a('CoverageWorkerMatch', 'worker', 'i')}
                 {set_a('CoverageSlotMatch', 'i', 'worker')} {set_a('AllowedEmpty', 'i', 'false')}
                 {set_a('RequiredWorker', 'worker', 'true')} {set_a('FixedSlots', 'i', 'worker')}))))
@@ -786,7 +808,11 @@ code["PolicyStep"] = f"""
     (:15
       (if (and (> {g('ReserveCount')} 0) (< i {g('WorkerCount')}))
         (bind quality {a('ReserveQuality', 'i')})
-        (if (not (and (>= quality 0.0) (<= quality 1000000.0))) {call('FailPlan')})
+        (if (not (and (>= quality 0.0) (<= quality 1000000.0))) {call('FailPlan')}
+          (else
+            (if (not {g('FractionalBuilderQuality')})
+              (if (!= quality ({node('FloortoInteger64')} :A quality))
+                {s('FractionalBuilderQuality', 'true')}))))
         {s('PolicyCursor', '(+ i 1)')}
         (else {s('State', '16')})))
     (:16
@@ -1026,7 +1052,10 @@ for source in code.values():
 for name in functions:
     unreal.log("WO_PLANNER_GENERATE " + name)
     with toolset_registry.tool_raising_exceptions():
-        BP.write_graph_dsl(graphs[name], code[name])
+        if name == 'BatchValidateBlock':
+            write_graph_with_config(graphs[name], code[name], post_create_callback=configure_make_array64)
+        else:
+            BP.write_graph_dsl(graphs[name], code[name])
     Path(unreal.Paths.project_saved_dir(), f"WorkerOptimizer-Policy-{name}.dsl").write_text(code[name], encoding="utf-8")
 with toolset_registry.tool_raising_exceptions():
     BP.compile_blueprint(bp, warnings_as_errors=True)

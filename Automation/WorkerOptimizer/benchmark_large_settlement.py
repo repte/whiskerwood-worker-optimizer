@@ -31,7 +31,8 @@ def expected_objective(size, priorities, reserve, builder_quality, mode):
             "quality": [100.0 * value for value in counts], "builder": builder}
 
 
-def run_fixture(size, strict, uniform=False, reserve=3, builder_quality=None, mode="unique"):
+def run_fixture(size, strict, uniform=False, reserve=3, builder_quality=None, mode="unique",
+                configure_unfixed=False):
     assert size > 0 and size % 2 == 0, "Two slots per building require a positive even size"
     assert isinstance(reserve, int) and 0 <= reserve <= size // 2
     assert mode in ("unique", "ties"), mode
@@ -51,6 +52,8 @@ def run_fixture(size, strict, uniform=False, reserve=3, builder_quality=None, mo
     planner.call_method("StartPlan", args=(scores, [r // 2 for r in range(rows)],
                                           [r % 2 == 0 for r in range(rows)], priorities,
                                           workers, strict))
+    if configure_unfixed:
+        assert planner.call_method("RequireFixedSlots", args=([-1] * rows,))[-1]
     assert planner.call_method("KeepUnassigned", args=(reserve, workers, builder_quality))[-1]
     stages, calls, compiled_seconds, work = {}, 0, 0., 0
     next_progress = started + 15
@@ -101,6 +104,7 @@ def run_fixture(size, strict, uniform=False, reserve=3, builder_quality=None, mo
     host_seconds = time.perf_counter() - started
     result = {"workers": workers, "rows": rows, "buildings": buildings, "strict": strict,
               "reserve": reserve, "uniform_priority": uniform, "mode": mode, "calls": calls, "work": work,
+              "fixed_slots_configured": configure_unfixed,
               "host_seconds": host_seconds, "under_15_seconds": host_seconds < 15.0,
               "compiled_call_sum_seconds": compiled_seconds, "stages": stages,
               "objective": {"coverage": coverage, "counts": counts, "quality": quality, "builder": builder},

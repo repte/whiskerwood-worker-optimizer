@@ -9,6 +9,8 @@ import planner_cost_dsl
 import planner_refine_bound_dsl
 import planner_refine_cache_dsl
 import planner_refine_reconstruct_dsl
+import planner_native_validation_dsl
+import planner_single_max_template_dsl
 from planner_validation_dsl import statistics as validation_statistics
 from test_planner_implicit_cost_model import CostEvaluator, bits, legacy_score, parser, row_statistics
 
@@ -19,6 +21,8 @@ def generated(path=None):
     env.update(vars(planner_refine_bound_dsl))
     env.update(vars(planner_refine_cache_dsl))
     env.update(vars(planner_refine_reconstruct_dsl))
+    env.update(vars(planner_native_validation_dsl))
+    env.update(vars(planner_single_max_template_dsl))
     env['validation_statistics'] = validation_statistics
     env["node"] = lambda name: "Variables|Default|" + name
     started = False
@@ -61,7 +65,13 @@ class PlannerEvaluator(CostEvaluator):
             if head.startswith('Variables|Default|Get'):
                 name = head.removeprefix('Variables|Default|Get')
                 if name not in self.state:
+                    for kind, names in planner_native_validation_dsl.NATIVE_VALIDATION_VARIABLES.items():
+                        if name in names.split():
+                            self.state[name] = [] if kind.endswith('[]') else False if kind == 'bool' else 0
                     for kind, names in planner_refine_reconstruct_dsl.RECONSTRUCTION_VARIABLES.items():
+                        if name in names.split():
+                            self.state[name] = [] if kind.endswith('[]') else False if kind == 'bool' else 0
+                    for kind, names in planner_single_max_template_dsl.SINGLE_MAXIMUM_VARIABLES.items():
                         if name in names.split():
                             self.state[name] = [] if kind.endswith('[]') else False if kind == 'bool' else 0
                     if name in planner_cost_dsl.IMPLICIT_VARIABLES:
@@ -106,20 +116,25 @@ def check_native_handoff(env, parse, symbol):
                 head = str(form[0])
                 if head in {"Variables|Default|Initialize", "Variables|Default|InitializeImplicitFirstPass"}:
                     self.state.update(NativePlannerTrusted=False, NativeCsrReady=False,
-                                      NativeRowOffsets=[], NativeColumns=[])
+                                      NativeRowOffsets=[], NativeColumns=[], NativeDeadLabels=False)
                     return None
                 if head == "Variables|Default|RestrictDummies":
+                    return None
+                if head == "Variables|Default|EnableNativeDeadLabels":
+                    assert self.state["NativePlannerTrusted"] and not self.state["NativeDeadLabels"]
+                    self.state["NativeDeadLabels"] = True
                     return None
             return super().evaluate(form)
 
     for first, ready in ((True, False), (False, True), (False, False)):
-        state = dict(FirstPass=first, RetainedReady=ready, SlotCount=2, SolveColumns=3,
+        state = dict(FirstPass=first, RetainedReady=ready, FractionalBuilderQuality=False, SlotCount=2, SolveColumns=3,
                      PassScores=[0.0] * 6, AllowedEmpty=[False] * 2,
                      PassRowMinCost=[-2.0, -3.0], PassRowSecondMinCost=[0.0, -1.0],
                      PassRowMinColumn=[1, 2], RetainedRowOffsets=[0, 2, 3], RetainedColumns=[0, 1, 1],
                      NativePlannerTrusted=True, NativeCsrReady=True, NativeRowOffsets=[99], NativeColumns=[99])
         Initializer(parse(env["initialize_pass"]), symbol, state).edge()
         assert state["State"] == 5 and not state["FirstPass"] and state["NativePlannerTrusted"]
+        assert state["NativeDeadLabels"]
         assert state["NativeCsrReady"] == (not first and ready)
         assert state["NativeRowOffsets"] == ([0, 2, 3] if not first and ready else [])
         assert state["NativeColumns"] == ([0, 1, 1] if not first and ready else [])
@@ -153,7 +168,7 @@ def run():
                     if worker != row:
                         base[row * workers + worker] = -1e20
         state = dict(BaseScores=base, PlanValidationIndex=0, WorkerCount=workers,
-                     FixedConfigured=False, MaxScore=0.0, StatsOffset=0, StatsEnd=workers,
+                     FixedConfigured=False, HasActualFixed=False, MaxScore=0.0, StatsOffset=0, StatsEnd=workers,
                      StatsFirstColumn=0, StatsMaximumColumn=0, StatsFirstScore=-1e20,
                      StatsMaximumScore=-1e20, StatsPrefixScore=-1e20, StatsSecondScore=-1e20,
                      StatsAllReal=True, StatsUniformScore=True,

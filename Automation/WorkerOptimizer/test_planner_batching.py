@@ -32,11 +32,21 @@ def implicit_refine_work(planner):
 
 def finish(planner, limit):
     calls = work = 0
+    validation_work = 0
+    native_row_operations = {2: 0, 3: 0}
     states = set()
     while not planner.get_editor_property("PlanDone"):
         assert calls < 10000, "Planner did not complete the four-worker fixture"
-        states.add(planner.get_editor_property("State"))
-        work += advance(planner, limit)
+        state = planner.get_editor_property("State")
+        native_stage = planner.get_editor_property("NativeValidationStage")
+        states.add(state)
+        step_work = advance(planner, limit)
+        work += step_work
+        if state == 0:
+            validation_work += step_work
+            if native_stage in native_row_operations:
+                assert step_work == 1, ("Native row operation must cost one unit", native_stage, step_work)
+                native_row_operations[native_stage] += step_work
         calls += 1
     assert planner.get_editor_property("PlanSucceeded")
     assignment = list(planner.get_editor_property("PlanAssignment"))
@@ -44,14 +54,21 @@ def finish(planner, limit):
     assert sum(SCORES[row * 4 + worker] for row, worker in enumerate(assignment)) == 400.0
     planner.call_method("AdvancePlan")
     assert planner.get_editor_property("LastStepWork") == 0
-    return assignment, calls, work, states
+    return assignment, calls, work, states, validation_work, native_row_operations
 
 
 def verify_equivalent_budgets():
     small = finish(start(1), 1)
     normal = finish(start(64), 64)
     assert small[0] == normal[0]
-    assert small[2] == normal[2], ("Work changed with batch size", small[2], normal[2])
+    rows = len(SCORES) // 4
+    assert small[4] == len(SCORES) + 1, ("Legacy validation work", small[4])
+    assert small[5] == {2: 0, 3: 0}, small[5]
+    # Native gathering still charges every input cell, plus classify/publish per row.
+    assert normal[5] == {2: rows, 3: rows}, normal[5]
+    assert normal[4] == len(SCORES) + 2 * rows + 1, ("Native validation work", normal[4])
+    assert small[2] - small[4] == normal[2] - normal[4], (
+        "Nonvalidation work changed with batch size", small[2:], normal[2:])
     assert normal[1] < small[1], ("Normal budget did not batch work", small[1], normal[1])
     assert {4, 5, 6, 26}.issubset(small[3]), small[3]
     return small[1], normal[1]
