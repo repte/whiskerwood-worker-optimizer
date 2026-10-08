@@ -20,7 +20,9 @@ Siehe den [Pruefnachweis fuer 1.500 Arbeiter](https://github.com/repte/whiskerwo
 
 Der Standard-Build `20261008-231147-23057f55` bestand erneut die vollstaendige
 registrierte Editor-Testsuite auf den final gespeicherten Assets: **89/89 Tests**,
-ohne gemeldete Test-/Laufzeitwarnungen oder Fehler. Windows-Shipping-Cook sowie
+ohne protokollierte Fehler. Das Testprotokoll enthaelt wiederholte Engine-/Editorwarnungen
+sowie zwei Python-Warnungen durch Standardwerte von `DateTime()` in der Report-Testvorlage;
+es ist nicht warnungsfrei. Windows-Shipping-Cook sowie
 Paketinhalt und -integritaet wurden erfolgreich geprueft. Die verifizierte
 PAK-Datei enthaelt **46 Laufzeit-Assets / 92 Eintraege** und umfasst **598.131 Bytes**.
 Die Pruefsummen aller 46 Laufzeit-Assets in Quelle und Build-Projekt blieben durch
